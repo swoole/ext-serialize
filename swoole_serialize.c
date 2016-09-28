@@ -29,20 +29,27 @@
 
 static int le_swoole_serialize;
 
-static CPINLINE int seriaStringNew(size_t size, seriaString *str)
+static CPINLINE int swoole_string_new(size_t size, seriaString *str, uint32_t type)
 {
     int total = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + size + 1);
     str->total = total;
+    //escape the header for later
     str->offset = _STR_HEADER_SIZE;
+    //zend string addr
     str->buffer = emalloc(total);
+    bzero(str->buffer,total);
     if (!str->buffer)
     {
         php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc Error: %s [%d]", strerror(errno), errno);
     }
+    //    first 4 bytes is type
+    *(uint32_t*) (str->buffer + str->offset) = type;
+    SERIA_SET_TYPE(str->buffer, type);
+    str->offset += sizeof (uint32_t);
     return 0;
 }
 
-static CPINLINE void seriaStringCpy(seriaString *str, void *mem, size_t len)
+static CPINLINE void swoole_string_cpy(seriaString *str, void *mem, size_t len)
 {
     int new_size = len + str->offset;
     if (str->total < new_size)
@@ -62,7 +69,11 @@ static CPINLINE void seriaStringCpy(seriaString *str, void *mem, size_t len)
     str->offset += len;
 }
 
-static void* unSerializeArr(void *buffer, zval *zvalue)
+/*
+ * array
+ */
+
+static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 {
     //Initialize zend array
     int len = 0;
@@ -78,6 +89,7 @@ static void* unSerializeArr(void *buffer, zval *zvalue)
     HT_SET_DATA_ADDR(ht, arData);
     buffer += len;
     ht->pDestructor = ZVAL_PTR_DTOR;
+    GC_REFCOUNT(ht) = 1;
 
 
     int idx;
@@ -104,50 +116,113 @@ static void* unSerializeArr(void *buffer, zval *zvalue)
         }
         else if (Z_TYPE(p->val) == IS_ARRAY)
         {
-            buffer = unSerializeArr(buffer, &p->val);
+            buffer = swoole_unserialize_arr(buffer, &p->val);
         }
     }
     return buffer;
 
 }
 
-static void serializeArr(seriaString *buffer, zval *zvalue)
+static void swoole_serialize_arr(seriaString *buffer, zval *zvalue)
 {
     zval *data;
     zend_string *key;
     zend_ulong index;
     int len = 0;
 
-    seriaStringCpy(buffer, zvalue->value.arr, sizeof (zend_array));
+    swoole_string_cpy(buffer, zvalue->value.arr, sizeof (zend_array));
+
 
     void *arData = HT_GET_DATA_ADDR(Z_ARR_P(zvalue));
     len = HT_SIZE(Z_ARR_P(zvalue));
-    seriaStringCpy(buffer, arData, len);
+    swoole_string_cpy(buffer, arData, len);
 
     ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL_P(zvalue), index, key, data)
     {
         if (key)
         {
             len = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + key->len + 1);
-            seriaStringCpy(buffer, key, len);
+            swoole_string_cpy(buffer, key, len);
         }
 
         if (Z_TYPE_P(data) == IS_STRING)
         {
             //int            len3 = sizeof (zend_string) + Z_STRLEN_P(data);
             len = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + Z_STRLEN_P(data) + 1);
-            seriaStringCpy(buffer, Z_STR_P(data), len);
+            swoole_string_cpy(buffer, Z_STR_P(data), len);
         }
         else if (Z_TYPE_P(data) == IS_ARRAY)
         {
-            serializeArr(buffer, data);
+            swoole_serialize_arr(buffer, data);
         }
 
     }
     ZEND_HASH_FOREACH_END();
 }
 
-PHP_FUNCTION(swSerialize)
+/*
+ * string
+ */
+static CPINLINE void swoole_serialize_string(seriaString *buffer, zval *zvalue)
+{
+    swoole_string_cpy(buffer, Z_STRVAL_P(zvalue), Z_STRLEN_P(zvalue));
+}
+
+static CPINLINE zend_string* swoole_unserialize_string(void *buffer, size_t len)
+{
+    return zend_string_init(buffer, len, 0);
+}
+
+/*
+ * raw
+ */
+
+static CPINLINE void swoole_unserialize_raw(void *buffer, zval *zvalue)
+{
+    memcpy(&zvalue->value, buffer, sizeof (zend_value));
+}
+
+static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
+{
+    swoole_string_cpy(buffer, &zvalue->value, sizeof (zend_value));
+}
+
+/*
+ * dispatch
+ */
+
+static CPINLINE void swoole_seria_dispatch(seriaString *buffer, zval *zvalue)
+{
+    switch (Z_TYPE_P(zvalue))
+    {
+        case IS_UNDEF:
+        case IS_NULL:
+        case IS_TRUE:
+        case IS_FALSE:
+        case IS_LONG:
+        case IS_DOUBLE:
+            swoole_serialize_raw(buffer, zvalue);
+            break;
+        case IS_STRING:
+            swoole_serialize_string(buffer, zvalue);
+            break;
+        case IS_ARRAY:
+        {
+            swoole_serialize_arr(buffer, zvalue);
+        }
+            break;
+        case IS_OBJECT:
+        {
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support obj now");
+        }
+            break;
+        default:
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+            break;
+    }
+}
+
+PHP_FUNCTION(swoole_serialize)
 {
     zval *zvalue;
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "z", &zvalue) == FAILURE)
@@ -155,12 +230,12 @@ PHP_FUNCTION(swSerialize)
         return;
     }
     seriaString str;
-    seriaStringNew(SERIA_SIZE, &str);
-    serializeArr(&str, zvalue);//serialize into a string
-    
+    swoole_string_new(SERIA_SIZE, &str, Z_TYPE_P(zvalue));
+    swoole_seria_dispatch(&str, zvalue); //serialize into a string
     zend_string *z_str = (zend_string *) str.buffer;
+
     z_str->val[str.offset] = '\0';
-    z_str->len = str.offset;
+    z_str->len = str.offset + 1;
     z_str->h = 0;
     GC_REFCOUNT(z_str) = 1;
     GC_TYPE(z_str) = IS_STRING;
@@ -170,17 +245,45 @@ PHP_FUNCTION(swSerialize)
     RETURN_STR(z_str);
 }
 
-PHP_FUNCTION(swUnSerialize)
+PHP_FUNCTION(swoole_unserialize)
 {
-    char *arg = NULL;
+    char *buffer = NULL;
     size_t arg_len;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &arg, &arg_len) == FAILURE)
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &buffer, &arg_len) == FAILURE)
     {
         return;
     }
-    unSerializeArr(arg, return_value);
-    return;
+    uint32_t type = SERIA_GET_TYPE(buffer);
+    buffer += sizeof (uint32_t);
+    switch (type)
+    {
+        case IS_UNDEF:
+        case IS_NULL:
+        case IS_TRUE:
+        case IS_FALSE:
+        case IS_LONG:
+        case IS_DOUBLE:
+            swoole_unserialize_raw(buffer, return_value);
+            Z_TYPE_INFO_P(return_value) = type;
+            return;
+        case IS_STRING:
+            arg_len -= sizeof (uint32_t);
+            zend_string *str = swoole_unserialize_string(buffer, arg_len);
+            RETURN_STR(str);
+        case IS_ARRAY:
+            swoole_unserialize_arr(buffer, return_value);
+            break;
+        case IS_OBJECT:
+        {
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support obj now");
+        }
+            break;
+        default:
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+            break;
+    }
+
 }
 
 /* {{{ PHP_MINIT_FUNCTION
@@ -249,8 +352,8 @@ PHP_MINFO_FUNCTION(swoole_serialize)
  * Every user visible function must have an entry in swoole_serialize_functions[].
  */
 const zend_function_entry swoole_serialize_functions[] = {
-    PHP_FE(swSerialize, NULL)
-    PHP_FE(swUnSerialize, NULL)
+    PHP_FE(swoole_serialize, NULL)
+    PHP_FE(swoole_unserialize, NULL)
     PHP_FE_END /* Must be the last line in swoole_serialize_functions[] */
 };
 /* }}} */

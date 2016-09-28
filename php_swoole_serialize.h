@@ -80,10 +80,14 @@ ZEND_TSRMLS_CACHE_EXTERN()
 typedef struct _seriaString {
     size_t offset;
     size_t total;
-    zend_string * buffer;
+    void * buffer;//zend_string
 } seriaString;
 
 #endif	/* PHP_SWOOLE_SERIALIZE_H */
+
+
+#define SERIA_GET_TYPE(buffer)        *(uint32_t*) (buffer)
+#define SERIA_SET_TYPE(buffer,type)   *(uint32_t*) (buffer->buffer + buffer->offset) = type
 
 
 /*
