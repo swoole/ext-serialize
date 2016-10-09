@@ -19,3 +19,7 @@ phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">php.i
 ## 使用
 $str = swoole_serialize($arr);
 $arr = swoole_unserialize($str);
+
+##todo
+- 在不影响性能的情况下尽量压缩序列化大小
+- 支持object和引用类型
