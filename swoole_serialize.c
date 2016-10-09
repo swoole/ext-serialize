@@ -44,7 +44,7 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, uint32_t ty
     }
     //    first 4 bytes is type
     *(uint32_t*) (str->buffer + str->offset) = type;
-    SERIA_SET_TYPE(str->buffer, type);
+  //  SERIA_SET_TYPE(str->buffer, type);
     str->offset += sizeof (uint32_t);
     return 0;
 }
@@ -130,6 +130,10 @@ static void swoole_serialize_arr(seriaString *buffer, zval *zvalue)
     zend_ulong index;
     int len = 0;
 
+    seriaArray seriaArr;
+    seriaArr.nNextFreeElement = zvalue->value.arr->nNextFreeElement;
+    seriaArr.nTableSize = zvalue->value.arr->nTableSize;
+    seriaArr.nNextFreeElement = zvalue->value.arr->nNextFreeElement;
     swoole_string_cpy(buffer, zvalue->value.arr, sizeof (zend_array));
 
 
