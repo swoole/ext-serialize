@@ -29,7 +29,7 @@
 
 static int le_swoole_serialize;
 
-static CPINLINE int swoole_string_new(size_t size, seriaString *str, uint32_t type)
+static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar type)
 {
     int total = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + size + 1);
     str->total = total;
@@ -37,21 +37,21 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, uint32_t ty
     str->offset = _STR_HEADER_SIZE;
     //zend string addr
     str->buffer = emalloc(total);
-    bzero(str->buffer,total);
+    bzero(str->buffer, total);
     if (!str->buffer)
     {
         php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc Error: %s [%d]", strerror(errno), errno);
     }
-    //    first 4 bytes is type
-    *(uint32_t*) (str->buffer + str->offset) = type;
-  //  SERIA_SET_TYPE(str->buffer, type);
-    str->offset += sizeof (uint32_t);
+    //    first 1 bytes is type
+    *(zend_uchar*) (str->buffer + str->offset) = type;
+    str->offset += sizeof (zend_uchar);
     return 0;
 }
 
-static CPINLINE void swoole_string_cpy(seriaString *str, void *mem, size_t len)
+static CPINLINE void swoole_check_size(seriaString *str, size_t len)
 {
-    int new_size = len + str->offset;
+
+    int new_size = len + str->offset + 3 + sizeof (zend_ulong); //space 1 for the type and 2 for key string len or index len and(zend_ulong) for key h
     if (str->total < new_size)
     {//extend it
 
@@ -65,8 +65,20 @@ static CPINLINE void swoole_string_cpy(seriaString *str, void *mem, size_t len)
         str->total = new_size;
     }
 
+}
+
+static CPINLINE void swoole_string_cpy(seriaString *str, void *mem, size_t len)
+{
+    swoole_check_size(str, len);
     memcpy(str->buffer + str->offset, mem, len);
-    str->offset += len;
+    str->offset = len + str->offset;
+}
+
+static CPINLINE void swoole_set_zend_value(seriaString *str, void *value)
+{
+    swoole_check_size(str, sizeof (zend_value));
+    *(zend_value*) (str->buffer + str->offset) = *((zend_value*) value);
+    str->offset = sizeof (zend_value) + str->offset;
 }
 
 /*
@@ -77,47 +89,153 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 {
     //Initialize zend array
     int len = 0;
+    zend_ulong h, nIndex;
     ZVAL_NEW_ARR(zvalue);
-    memcpy(Z_ARR_P(zvalue), buffer, sizeof (zend_array));
-    buffer += sizeof (zend_array);
+    seriaArray *seriaArr = (seriaArray*) buffer;
+    buffer += sizeof (seriaArray);
 
     //Initialize buckets
     zend_array *ht = Z_ARR_P(zvalue);
-    len = HT_SIZE(ht);
-    void *arData = emalloc(len);
-    memcpy(arData, buffer, len);
-    HT_SET_DATA_ADDR(ht, arData);
-    buffer += len;
+    ht->nTableSize = seriaArr->nTableSize;
+    ht->nNumUsed = seriaArr->nNumOfElements;
+    ht->nNumOfElements = seriaArr->nNumOfElements;
+    ht->u.flags = HASH_FLAG_APPLY_PROTECTION;
+    ht->nTableMask = -(ht->nTableSize);
     ht->pDestructor = ZVAL_PTR_DTOR;
+
+    len = HT_SIZE(ht);
+    //    void *arData = ecalloc(1, len);
+    void *arData = emalloc(len);
+    HT_SET_DATA_ADDR(ht, arData);
     GC_REFCOUNT(ht) = 1;
+    GC_TYPE_INFO(ht) = IS_ARRAY;
+    HT_HASH_RESET(ht);
 
 
     int idx;
     Bucket *p;
-    for (idx = 0; idx < ht->nNumUsed; idx++)
+    for (idx = 0; idx < seriaArr->nNumOfElements; idx++)
     {
+        SBucketType type = *((SBucketType*) buffer);
+        buffer += sizeof (SBucketType);
         p = ht->arData + idx;
-        if (Z_TYPE(p->val) == IS_UNDEF) continue;
-
         /* Initialize key */
-        if (p->key)
+        if (type.key_type == KEY_TYPE_STRING)
         {
-            zend_string *str = (zend_string*) buffer;
-            p->key = zend_string_dup(str, 0);
-            len = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + str->len + 1);
-            buffer += len;
+            size_t key_len;
+            h = *((zend_ulong*) buffer);
+            buffer += sizeof (zend_ulong);
+
+            if (type.key_len == 1)
+            {
+                key_len = *((zend_uchar*) buffer);
+                buffer += sizeof (zend_uchar);
+            }
+            else if (type.key_len == 2)
+            {
+                key_len = *((unsigned short*) buffer);
+                buffer += sizeof (unsigned short);
+            }
+            else
+            {
+                key_len = *((size_t*) buffer);
+                buffer += sizeof (size_t);
+            }
+            p->key = zend_string_init((char*) buffer, key_len, 0);
+            //            h = zend_inline_hash_func((char*) buffer, key_len);
+            p->key->h = p->h = h;
+            buffer += key_len;
         }
-        if (Z_TYPE(p->val) == IS_STRING)
+        else
         {
-            zend_string *str = (zend_string*) buffer;
-            p->val.value.str = zend_string_dup(str, 0);
-            len = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + str->len + 1);
-            buffer += len;
+            if (type.key_len == 1)
+            {
+                h = *((zend_uchar*) buffer);
+                buffer += sizeof (zend_uchar);
+            }
+            else if (type.key_len == 2)
+            {
+                h = *((unsigned short*) buffer);
+                buffer += sizeof (unsigned short);
+            }
+            else
+            {
+                h = *((zend_ulong*) buffer);
+                buffer += sizeof (zend_ulong);
+            }
+            p->h = h;
+            p->key = NULL;
         }
-        else if (Z_TYPE(p->val) == IS_ARRAY)
+
+
+
+        /* Initialize hash */
+        nIndex = h | ht->nTableMask;
+        Z_NEXT(p->val) = HT_HASH(ht, nIndex);
+        HT_HASH(ht, nIndex) = HT_IDX_TO_HASH(idx);
+
+        /* Initialize data type */
+        p->val.u1.v.type = type.data_type;
+        Z_TYPE_FLAGS(p->val) = 0;
+
+        /* Initialize data */
+        if (type.data_type == IS_STRING)
+        {
+            size_t data_len;
+            if (type.data_len == 1)
+            {
+                data_len = *((zend_uchar*) buffer);
+                buffer += sizeof (zend_uchar);
+            }
+            else if (type.data_len == 2)
+            {
+                data_len = *((unsigned short*) buffer);
+                buffer += sizeof (unsigned short);
+            }
+            else
+            {
+                data_len = *((size_t*) buffer);
+                buffer += sizeof (size_t);
+            }
+            p->val.value.str = zend_string_init((char*) buffer, data_len, 0);
+            buffer += data_len;
+        }
+        else if (type.data_type == IS_ARRAY)
         {
             buffer = swoole_unserialize_arr(buffer, &p->val);
         }
+        else if (type.data_type == IS_LONG)
+        {
+
+            if (type.data_len == 1)
+            {
+                Z_LVAL(p->val) = *((zend_uchar*) buffer);
+                buffer += sizeof (zend_uchar);
+            }
+            else if (type.data_len == 2)
+            {
+                Z_LVAL(p->val) = *((unsigned short*) buffer);
+                buffer += sizeof (unsigned short);
+            }
+            else
+            {
+                p->val.value = *((zend_value*) buffer);
+                buffer += sizeof (zend_value);
+            }
+
+        }
+        else if (type.data_type == IS_DOUBLE)
+        {
+            p->val.value = *((zend_value*) buffer);
+            buffer += sizeof (zend_value);
+        }
+        //        else
+        //        {
+        //   IS_NULL
+        //IS_FALSE
+        //IS_TRUE         
+        //        }
+
     }
     return buffer;
 
@@ -128,37 +246,128 @@ static void swoole_serialize_arr(seriaString *buffer, zval *zvalue)
     zval *data;
     zend_string *key;
     zend_ulong index;
-    int len = 0;
-
-  /*  seriaArray seriaArr;
-    seriaArr.nNextFreeElement = zvalue->value.arr->nNextFreeElement;
-    seriaArr.nTableSize = zvalue->value.arr->nTableSize;
-    seriaArr.nNextFreeElement = zvalue->value.arr->nNextFreeElement;
-    */
-	swoole_string_cpy(buffer, zvalue->value.arr, sizeof (zend_array));
-
-
-    void *arData = HT_GET_DATA_ADDR(Z_ARR_P(zvalue));
-    len = HT_SIZE(Z_ARR_P(zvalue));
-    swoole_string_cpy(buffer, arData, len);
+    seriaArray seriaArr;
+    seriaArr.nTableSize = zvalue->value.arr->nTableSize; //todo 
+    seriaArr.nNumOfElements = zvalue->value.arr->nNumOfElements;
+    swoole_string_cpy(buffer, &seriaArr, sizeof (seriaArray));
 
     ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL_P(zvalue), index, key, data)
     {
+        SBucketType type;
+        type.data_type = Z_TYPE_P(data);
+        //start point
+        size_t p = buffer->offset;
+
+        //seria key
         if (key)
         {
-            len = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + key->len + 1);
-            swoole_string_cpy(buffer, key, len);
+            type.key_type = KEY_TYPE_STRING;
+            if (key->len <= 0xff)
+            {
+                type.key_len = 1;
+                SERIA_SET_ENTRY_TYPE(buffer, type);
+                SERIA_SET_ENTRY_ULONG(buffer, key->h);
+                SERIA_SET_ENTRY_TYPE(buffer, key->len);
+
+                swoole_string_cpy(buffer, key->val, key->len);
+            }
+            else if (key->len <= 0xffff)
+            {//if more than this  don't need optimize 
+                type.key_len = 2;
+                SERIA_SET_ENTRY_TYPE(buffer, type);
+                SERIA_SET_ENTRY_ULONG(buffer, key->h);
+                SERIA_SET_ENTRY_SHORT(buffer, key->len);
+
+                swoole_string_cpy(buffer, key->val, key->len);
+            }
+            else
+            {
+                type.key_len = 0;
+                SERIA_SET_ENTRY_TYPE(buffer, type);
+
+                swoole_string_cpy(buffer, key + XtOffsetOf(zend_string, h), sizeof (size_t) + sizeof (zend_ulong) + key->len);
+            }
+
+        }
+        else
+        {
+            type.key_type = KEY_TYPE_INDEX;
+            if (index <= 0xff)
+            {
+                type.key_len = 1;
+                SERIA_SET_ENTRY_TYPE(buffer, type);
+                SERIA_SET_ENTRY_TYPE(buffer, index);
+            }
+            else if (index <= 0xffff)
+            {//if more than this  don't need optimize 
+                type.key_len = 2;
+                SERIA_SET_ENTRY_TYPE(buffer, type);
+                SERIA_SET_ENTRY_SHORT(buffer, index);
+            }
+            else
+            {
+                type.key_len = 0;
+                SERIA_SET_ENTRY_TYPE(buffer, type);
+                SERIA_SET_ENTRY_ULONG(buffer, index);
+            }
+
         }
 
+
+        //seria data
         if (Z_TYPE_P(data) == IS_STRING)
         {
-            //int            len3 = sizeof (zend_string) + Z_STRLEN_P(data);
-            len = ZEND_MM_ALIGNED_SIZE(_STR_HEADER_SIZE + Z_STRLEN_P(data) + 1);
-            swoole_string_cpy(buffer, Z_STR_P(data), len);
+            if (Z_STRLEN_P(data) <= 0xff)
+            {
+                ((SBucketType*) (buffer->buffer + p))->data_len = 1;
+                SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
+                swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
+            }
+            else if (Z_STRLEN_P(data) <= 0xffff)
+            {
+                ((SBucketType*) (buffer->buffer + p))->data_len = 2;
+                SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
+                swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
+            }
+            else
+            {
+                ((SBucketType*) (buffer->buffer + p))->data_len = 0;
+                swoole_string_cpy(buffer, (char*) Z_STR_P(data) + XtOffsetOf(zend_string, len), sizeof (size_t) + Z_STRLEN_P(data));
+            }
+
         }
         else if (Z_TYPE_P(data) == IS_ARRAY)
         {
             swoole_serialize_arr(buffer, data);
+        }
+        else if (Z_TYPE_P(data) == IS_LONG)
+        {
+            if (Z_LVAL_P(data) <= 0xff)
+            {
+                ((SBucketType*) (buffer->buffer + p))->data_len = 1;
+                swoole_check_size(buffer, 1);
+                SERIA_SET_ENTRY_TYPE(buffer, Z_LVAL_P(data));
+            }
+            else if (Z_LVAL_P(data) <= 0xffff)
+            {
+                ((SBucketType*) (buffer->buffer + p))->data_len = 2;
+                swoole_check_size(buffer, 2);
+                SERIA_SET_ENTRY_SHORT(buffer, Z_LVAL_P(data));
+            }
+            else
+            {//if more than this  don't need optimize
+                ((SBucketType*) (buffer->buffer + p))->data_len = 0;
+                swoole_set_zend_value(buffer, &(data->value));
+            }
+
+        }
+        else if (Z_TYPE_P(data) == IS_DOUBLE)
+        {//the real world app ,optimize this has low improve
+            swoole_set_zend_value(buffer, &(data->value));
+        }
+        else
+        {// check tail space
+            swoole_check_size(buffer, 0);
         }
 
     }
@@ -170,11 +379,13 @@ static void swoole_serialize_arr(seriaString *buffer, zval *zvalue)
  */
 static CPINLINE void swoole_serialize_string(seriaString *buffer, zval *zvalue)
 {
+
     swoole_string_cpy(buffer, Z_STRVAL_P(zvalue), Z_STRLEN_P(zvalue));
 }
 
 static CPINLINE zend_string* swoole_unserialize_string(void *buffer, size_t len)
 {
+
     return zend_string_init(buffer, len, 0);
 }
 
@@ -184,11 +395,13 @@ static CPINLINE zend_string* swoole_unserialize_string(void *buffer, size_t len)
 
 static CPINLINE void swoole_unserialize_raw(void *buffer, zval *zvalue)
 {
+
     memcpy(&zvalue->value, buffer, sizeof (zend_value));
 }
 
 static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
 {
+
     swoole_string_cpy(buffer, &zvalue->value, sizeof (zend_value));
 }
 
@@ -223,6 +436,7 @@ static CPINLINE void swoole_seria_dispatch(seriaString *buffer, zval *zvalue)
             break;
         default:
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+
             break;
     }
 }
@@ -232,6 +446,7 @@ PHP_FUNCTION(swoole_serialize)
     zval *zvalue;
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "z", &zvalue) == FAILURE)
     {
+
         return;
     }
     seriaString str;
@@ -259,8 +474,8 @@ PHP_FUNCTION(swoole_unserialize)
     {
         return;
     }
-    uint32_t type = SERIA_GET_TYPE(buffer);
-    buffer += sizeof (uint32_t);
+    zend_uchar type = *(zend_uchar*) (buffer);
+    buffer += sizeof (zend_uchar);
     switch (type)
     {
         case IS_UNDEF:
@@ -286,6 +501,7 @@ PHP_FUNCTION(swoole_unserialize)
             break;
         default:
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+
             break;
     }
 
@@ -295,6 +511,7 @@ PHP_FUNCTION(swoole_unserialize)
  */
 PHP_MINIT_FUNCTION(swoole_serialize)
 {
+
     /* If you have INI entries, uncomment these lines
     REGISTER_INI_ENTRIES();
      */
@@ -306,6 +523,7 @@ PHP_MINIT_FUNCTION(swoole_serialize)
  */
 PHP_MSHUTDOWN_FUNCTION(swoole_serialize)
 {
+
     /* uncomment this line if you have INI entries
     UNREGISTER_INI_ENTRIES();
      */
@@ -320,6 +538,7 @@ PHP_MSHUTDOWN_FUNCTION(swoole_serialize)
 PHP_RINIT_FUNCTION(swoole_serialize)
 {
 #if defined(COMPILE_DL_SWOOLE_SERIALIZE) && defined(ZTS)
+
     ZEND_TSRMLS_CACHE_UPDATE();
 #endif
     return SUCCESS;
@@ -332,6 +551,7 @@ PHP_RINIT_FUNCTION(swoole_serialize)
  */
 PHP_RSHUTDOWN_FUNCTION(swoole_serialize)
 {
+
     return SUCCESS;
 }
 /* }}} */
