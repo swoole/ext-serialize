@@ -89,7 +89,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 {
     //Initialize zend array
     int len = 0;
-    zend_ulong h, nIndex;
+    zend_ulong h, nIndex, max_index = 0;
     ZVAL_NEW_ARR(zvalue);
     seriaArray *seriaArr = (seriaArray*) buffer;
     buffer += sizeof (seriaArray);
@@ -99,6 +99,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
     ht->nTableSize = seriaArr->nTableSize;
     ht->nNumUsed = seriaArr->nNumOfElements;
     ht->nNumOfElements = seriaArr->nNumOfElements;
+    ht->nNextFreeElement = 0;
     ht->u.flags = HASH_FLAG_APPLY_PROTECTION;
     ht->nTableMask = -(ht->nTableSize);
     ht->pDestructor = ZVAL_PTR_DTOR;
@@ -165,6 +166,10 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
             }
             p->h = h;
             p->key = NULL;
+            if (h >= max_index)
+            {
+                max_index = h + 1;
+            }
         }
 
 
@@ -237,6 +242,8 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
         //        }
 
     }
+    ht->nNextFreeElement = max_index;
+
     return buffer;
 
 }
