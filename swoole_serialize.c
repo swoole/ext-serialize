@@ -313,61 +313,67 @@ static void swoole_serialize_arr(seriaString *buffer, zval *zvalue)
 
         }
 
-
         //seria data
-        if (Z_TYPE_P(data) == IS_STRING)
+try_again:
+        switch (Z_TYPE_P(data))
         {
-            if (Z_STRLEN_P(data) <= 0xff)
+            case IS_STRING:
             {
-                ((SBucketType*) (buffer->buffer + p))->data_len = 1;
-                SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
-                swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
+                if (Z_STRLEN_P(data) <= 0xff)
+                {
+                    ((SBucketType*) (buffer->buffer + p))->data_len = 1;
+                    SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
+                    swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
+                }
+                else if (Z_STRLEN_P(data) <= 0xffff)
+                {
+                    ((SBucketType*) (buffer->buffer + p))->data_len = 2;
+                    SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
+                    swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
+                }
+                else
+                {
+                    ((SBucketType*) (buffer->buffer + p))->data_len = 0;
+                    swoole_string_cpy(buffer, (char*) Z_STR_P(data) + XtOffsetOf(zend_string, len), sizeof (size_t) + Z_STRLEN_P(data));
+                }
+                break;
             }
-            else if (Z_STRLEN_P(data) <= 0xffff)
+            case IS_LONG:
             {
-                ((SBucketType*) (buffer->buffer + p))->data_len = 2;
-                SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
-                swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
+                if (Z_LVAL_P(data) <= 0xff)
+                {
+                    ((SBucketType*) (buffer->buffer + p))->data_len = 1;
+                    swoole_check_size(buffer, 1);
+                    SERIA_SET_ENTRY_TYPE(buffer, Z_LVAL_P(data));
+                }
+                else if (Z_LVAL_P(data) <= 0xffff)
+                {
+                    ((SBucketType*) (buffer->buffer + p))->data_len = 2;
+                    swoole_check_size(buffer, 2);
+                    SERIA_SET_ENTRY_SHORT(buffer, Z_LVAL_P(data));
+                }
+                else
+                {//if more than this  don't need optimize
+                    ((SBucketType*) (buffer->buffer + p))->data_len = 0;
+                    swoole_set_zend_value(buffer, &(data->value));
+                }
+                break;
             }
-            else
-            {
-                ((SBucketType*) (buffer->buffer + p))->data_len = 0;
-                swoole_string_cpy(buffer, (char*) Z_STR_P(data) + XtOffsetOf(zend_string, len), sizeof (size_t) + Z_STRLEN_P(data));
-            }
-
-        }
-        else if (Z_TYPE_P(data) == IS_ARRAY)
-        {
-            swoole_serialize_arr(buffer, data);
-        }
-        else if (Z_TYPE_P(data) == IS_LONG)
-        {
-            if (Z_LVAL_P(data) <= 0xff)
-            {
-                ((SBucketType*) (buffer->buffer + p))->data_len = 1;
-                swoole_check_size(buffer, 1);
-                SERIA_SET_ENTRY_TYPE(buffer, Z_LVAL_P(data));
-            }
-            else if (Z_LVAL_P(data) <= 0xffff)
-            {
-                ((SBucketType*) (buffer->buffer + p))->data_len = 2;
-                swoole_check_size(buffer, 2);
-                SERIA_SET_ENTRY_SHORT(buffer, Z_LVAL_P(data));
-            }
-            else
-            {//if more than this  don't need optimize
-                ((SBucketType*) (buffer->buffer + p))->data_len = 0;
+            case IS_ARRAY:
+                swoole_serialize_arr(buffer, data);
+                break;
+            case IS_REFERENCE:
+                data = Z_REFVAL_P(data);
+                ((SBucketType*) (buffer->buffer + p))->data_type = Z_TYPE_P(data);
+                goto try_again;
+                break;
+            case IS_DOUBLE:
                 swoole_set_zend_value(buffer, &(data->value));
-            }
+                break;
+            default:// check tail space
+                swoole_check_size(buffer, 0);
+                break;
 
-        }
-        else if (Z_TYPE_P(data) == IS_DOUBLE)
-        {//the real world app ,optimize this has low improve
-            swoole_set_zend_value(buffer, &(data->value));
-        }
-        else
-        {// check tail space
-            swoole_check_size(buffer, 0);
         }
 
     }
@@ -411,6 +417,7 @@ static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
 
 static CPINLINE void swoole_seria_dispatch(seriaString *buffer, zval *zvalue)
 {
+again:
     switch (Z_TYPE_P(zvalue))
     {
         case IS_UNDEF:
@@ -425,14 +432,14 @@ static CPINLINE void swoole_seria_dispatch(seriaString *buffer, zval *zvalue)
             swoole_serialize_string(buffer, zvalue);
             break;
         case IS_ARRAY:
-        {
             swoole_serialize_arr(buffer, zvalue);
-        }
+            break;
+        case IS_REFERENCE:
+            zvalue = Z_REFVAL_P(zvalue);
+            goto again;
             break;
         case IS_OBJECT:
-        {
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support obj now");
-        }
             break;
         default:
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
