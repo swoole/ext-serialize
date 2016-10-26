@@ -28,6 +28,10 @@
 #include "php_swoole_serialize.h"
 
 static int le_swoole_serialize;
+static void swoole_serialize_object(void *buffer, zval *zvalue);
+static void swoole_serialize_arr(seriaString *buffer, zend_array *zvalue);
+static void* swoole_unserialize_arr(void *buffer, zval *zvalue);
+static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *args);
 
 static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar type)
 {
@@ -234,12 +238,11 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
             p->val.value = *((zend_value*) buffer);
             buffer += sizeof (zend_value);
         }
-        //        else
-        //        {
-        //   IS_NULL
-        //IS_FALSE
-        //IS_TRUE         
-        //        }
+        else if (type.data_type == IS_UNDEF)
+        {
+            buffer = swoole_unserialize_object(buffer, &p->val, NULL);
+            p->val.u1.v.type = IS_OBJECT;
+        }
 
     }
     ht->nNextFreeElement = max_index;
@@ -248,17 +251,17 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 
 }
 
-static void swoole_serialize_arr(seriaString *buffer, zval *zvalue)
+static void swoole_serialize_arr(seriaString *buffer, zend_array *zvalue)
 {
     zval *data;
     zend_string *key;
     zend_ulong index;
     seriaArray seriaArr;
-    seriaArr.nTableSize = zvalue->value.arr->nTableSize; //todo 
-    seriaArr.nNumOfElements = zvalue->value.arr->nNumOfElements;
+    seriaArr.nTableSize = zvalue->nTableSize; //todo 
+    seriaArr.nNumOfElements = zvalue->nNumOfElements;
     swoole_string_cpy(buffer, &seriaArr, sizeof (seriaArray));
 
-    ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL_P(zvalue), index, key, data)
+    ZEND_HASH_FOREACH_KEY_VAL(zvalue, index, key, data)
     {
         SBucketType type;
         type.data_type = Z_TYPE_P(data);
@@ -366,16 +369,27 @@ try_again:
                 }
                 break;
             }
-            case IS_ARRAY:
-                swoole_serialize_arr(buffer, data);
+            case IS_DOUBLE:
+                swoole_set_zend_value(buffer, &(data->value));
                 break;
+            case IS_ARRAY:
+                swoole_serialize_arr(buffer, Z_ARRVAL_P(data));
+                break;
+
             case IS_REFERENCE:
                 data = Z_REFVAL_P(data);
                 ((SBucketType*) (buffer->buffer + p))->data_type = Z_TYPE_P(data);
                 goto try_again;
                 break;
-            case IS_DOUBLE:
-                swoole_set_zend_value(buffer, &(data->value));
+                //object propterty table is this type
+            case IS_INDIRECT:
+                data = Z_INDIRECT_P(data);
+                ((SBucketType*) (buffer->buffer + p))->data_type = Z_TYPE_P(data);
+                goto try_again;
+                break;
+            case IS_OBJECT:
+                ((SBucketType*) (buffer->buffer + p))->data_type = IS_UNDEF;
+                swoole_serialize_object(buffer, data);
                 break;
             default:// check tail space
                 swoole_check_size(buffer, 0);
@@ -418,6 +432,94 @@ static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
     swoole_string_cpy(buffer, &zvalue->value, sizeof (zend_value));
 }
 
+static void swoole_serialize_object(void *buffer, zval *zvalue)
+{
+    zend_string *name = Z_OBJCE_P(zvalue)->name;
+    swoole_string_cpy(buffer, (char*) name + XtOffsetOf(zend_string, len), sizeof (size_t) + name->len);
+    swoole_serialize_arr(buffer, Z_OBJPROP_P(zvalue));
+}
+
+static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *args)
+{
+    zval property;
+    size_t name_len = *((size_t*) buffer);
+    buffer += sizeof (size_t);
+    zend_string *class_name = zend_string_init((char*) buffer, name_len, 0);
+    buffer += name_len;
+    buffer = swoole_unserialize_arr(buffer, &property);
+
+
+
+    if (class_name && strcasecmp("stdClass", class_name->val) != 0)
+    {
+        //user class
+        zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
+        if (ce->constructor)
+        {
+            zend_fcall_info fci = {0};
+            zend_fcall_info_cache fcc = {0};
+            fci.size = sizeof (zend_fcall_info);
+            zval retval;
+            fci.function_table = &ce->function_table;
+            ZVAL_UNDEF(&fci.function_name);
+            fci.symbol_table = NULL;
+            fci.retval = &retval;
+            fci.param_count = 0;
+            fci.params = NULL;
+            fci.no_separation = 1;
+
+            zend_fcall_info_args_ex(&fci, ce->constructor, args);
+
+            fcc.initialized = 1;
+            fcc.function_handler = ce->constructor;
+            fcc.calling_scope = EG(scope);
+            fcc.called_scope = ce;
+
+            object_init_ex(return_value, ce);
+
+            fci.object = Z_OBJ_P(return_value);
+
+            if (zend_call_function(&fci, &fcc) == FAILURE)
+            {
+                php_error_docref(NULL TSRMLS_CC, E_ERROR, "could not call class constructor");
+                return;
+            }
+            else
+            {//??? free something?
+                //cp_zval_ptr_dtor(&args);
+            }
+        }
+        else
+        {
+            object_init_ex(return_value, ce);
+        }
+
+        zval *data;
+        const zend_string *key;
+        zend_ulong index;
+
+        ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL(property), index, key, data)
+        {
+            //            zend_update_property(ce, return_value, key->val, key->len, data TSRMLS_CC);
+            const char *prop_name;
+            size_t prop_len;
+            const char *tmp;
+            zend_unmangle_property_name_ex(key, &tmp, &prop_name, &prop_len);
+            zend_update_property(ce, return_value, prop_name, prop_len, data);
+        }
+        ZEND_HASH_FOREACH_END();
+
+    }
+    else
+    {
+        //default class
+        convert_to_object(&property);
+        ZVAL_OBJ(return_value, Z_OBJ(property));
+    }
+    return buffer;
+
+}
+
 /*
  * dispatch
  */
@@ -439,14 +541,14 @@ again:
             swoole_serialize_string(buffer, zvalue);
             break;
         case IS_ARRAY:
-            swoole_serialize_arr(buffer, zvalue);
+            swoole_serialize_arr(buffer, Z_ARRVAL_P(zvalue));
             break;
         case IS_REFERENCE:
             zvalue = Z_REFVAL_P(zvalue);
             goto again;
             break;
         case IS_OBJECT:
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support obj now");
+            swoole_serialize_object(buffer, zvalue);
             break;
         default:
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
@@ -469,7 +571,7 @@ PHP_FUNCTION(swoole_serialize)
     zend_string *z_str = (zend_string *) str.buffer;
 
     z_str->val[str.offset] = '\0';
-    z_str->len = str.offset + 1;
+    z_str->len = str.offset + 1 - _STR_HEADER_SIZE;
     z_str->h = 0;
     GC_REFCOUNT(z_str) = 1;
     GC_TYPE(z_str) = IS_STRING;
@@ -483,8 +585,9 @@ PHP_FUNCTION(swoole_unserialize)
 {
     char *buffer = NULL;
     size_t arg_len;
+    zval *args = NULL; //for object
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &buffer, &arg_len) == FAILURE)
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "s|a", &buffer, &arg_len, &args) == FAILURE)
     {
         return;
     }
@@ -502,16 +605,14 @@ PHP_FUNCTION(swoole_unserialize)
             Z_TYPE_INFO_P(return_value) = type;
             return;
         case IS_STRING:
-            arg_len -= sizeof (uint32_t);
+            arg_len -= sizeof (zend_uchar);
             zend_string *str = swoole_unserialize_string(buffer, arg_len);
             RETURN_STR(str);
         case IS_ARRAY:
             swoole_unserialize_arr(buffer, return_value);
             break;
         case IS_OBJECT:
-        {
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support obj now");
-        }
+            swoole_unserialize_object(buffer, return_value, args);
             break;
         default:
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
