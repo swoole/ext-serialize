@@ -127,6 +127,11 @@ typedef struct _SBucketType {
 #define KEY_TYPE_INDEX                0
 
 
+PHP_SWOOLE_SERIALIZE_API zend_string* php_swoole_serialize(zval *val);
+PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, zval *return_value, zval *object_args);
+
+
+
 #endif	/* PHP_SWOOLE_SERIALIZE_H */
 
 

@@ -450,72 +450,69 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
 
 
 
-    if (class_name && strcasecmp("stdClass", class_name->val) != 0)
+    //user class
+    zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
+    zend_string_release(class_name);
+    if (!ce)
     {
-        //user class
-        zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
-        if (ce->constructor)
+        php_error_docref(NULL TSRMLS_CC, E_ERROR, "Could not find class");
+    }
+    if (ce->constructor)
+    {
+
+        object_init_ex(return_value, ce);
+
+        zend_fcall_info fci = {0};
+        zend_fcall_info_cache fcc = {0};
+        fci.size = sizeof (zend_fcall_info);
+        zval retval;
+        fci.function_table = &ce->function_table;
+        ZVAL_UNDEF(&fci.function_name);
+        fci.symbol_table = NULL;
+        fci.retval = &retval;
+        fci.param_count = 0;
+        fci.params = NULL;
+        fci.no_separation = 1;
+
+        zend_fcall_info_args_ex(&fci, ce->constructor, args);
+
+        fcc.initialized = 1;
+        fcc.function_handler = ce->constructor;
+        fcc.calling_scope = EG(scope);
+        fcc.called_scope = ce;
+        fcc.object = Z_OBJ_P(return_value);
+        fci.object = Z_OBJ_P(return_value);
+
+        if (zend_call_function(&fci, &fcc) == FAILURE)
         {
-            zend_fcall_info fci = {0};
-            zend_fcall_info_cache fcc = {0};
-            fci.size = sizeof (zend_fcall_info);
-            zval retval;
-            fci.function_table = &ce->function_table;
-            ZVAL_UNDEF(&fci.function_name);
-            fci.symbol_table = NULL;
-            fci.retval = &retval;
-            fci.param_count = 0;
-            fci.params = NULL;
-            fci.no_separation = 1;
-
-            zend_fcall_info_args_ex(&fci, ce->constructor, args);
-
-            fcc.initialized = 1;
-            fcc.function_handler = ce->constructor;
-            fcc.calling_scope = EG(scope);
-            fcc.called_scope = ce;
-
-            object_init_ex(return_value, ce);
-
-            fci.object = Z_OBJ_P(return_value);
-
-            if (zend_call_function(&fci, &fcc) == FAILURE)
-            {
-                php_error_docref(NULL TSRMLS_CC, E_ERROR, "could not call class constructor");
-                return;
-            }
-            else
-            {//??? free something?
-                //cp_zval_ptr_dtor(&args);
-            }
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "could not call class constructor");
         }
         else
-        {
-            object_init_ex(return_value, ce);
+        {//??? free something?
+            //cp_zval_ptr_dtor(&args);
         }
-
-        zval *data;
-        const zend_string *key;
-        zend_ulong index;
-
-        ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL(property), index, key, data)
-        {
-            //            zend_update_property(ce, return_value, key->val, key->len, data TSRMLS_CC);
-            const char *prop_name;
-            size_t prop_len;
-            const char *tmp;
-            zend_unmangle_property_name_ex(key, &tmp, &prop_name, &prop_len);
-            zend_update_property(ce, return_value, prop_name, prop_len, data);
-        }
-        ZEND_HASH_FOREACH_END();
-
     }
     else
     {
-        //default class
-        convert_to_object(&property);
-        ZVAL_OBJ(return_value, Z_OBJ(property));
+        object_init_ex(return_value, ce);
     }
+
+    zval *data;
+    const zend_string *key;
+    zend_ulong index;
+
+    ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL(property), index, key, data)
+    {
+        //            zend_update_property(ce, return_value, key->val, key->len, data TSRMLS_CC);
+        const char *prop_name;
+        size_t prop_len;
+        const char *tmp;
+        zend_unmangle_property_name_ex(key, &tmp, &prop_name, &prop_len);
+        zend_update_property(ce, return_value, prop_name, prop_len, data);
+    }
+    ZEND_HASH_FOREACH_END();
+
+    zval_dtor(&property);
     return buffer;
 
 }
@@ -529,7 +526,6 @@ static CPINLINE void swoole_seria_dispatch(seriaString *buffer, zval *zvalue)
 again:
     switch (Z_TYPE_P(zvalue))
     {
-        case IS_UNDEF:
         case IS_NULL:
         case IS_TRUE:
         case IS_FALSE:
@@ -557,14 +553,8 @@ again:
     }
 }
 
-PHP_FUNCTION(swoole_serialize)
+PHP_SWOOLE_SERIALIZE_API zend_string* php_swoole_serialize(zval *zvalue)
 {
-    zval *zvalue;
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "z", &zvalue) == FAILURE)
-    {
-
-        return;
-    }
     seriaString str;
     swoole_string_new(SERIA_SIZE, &str, Z_TYPE_P(zvalue));
     swoole_seria_dispatch(&str, zvalue); //serialize into a string
@@ -577,6 +567,56 @@ PHP_FUNCTION(swoole_serialize)
     GC_TYPE(z_str) = IS_STRING;
     GC_FLAGS(z_str) = 0;
     GC_INFO(z_str) = 0;
+    return z_str;
+}
+
+/*
+ * buffer is seria string buffer
+ * len is string len
+ * return_value is unseria bucket
+ * args is for the object ctor (can be NULL)
+ */
+PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, zval *return_value, zval *object_args)
+{
+    zend_uchar type = *(zend_uchar*) (buffer);
+    buffer += sizeof (zend_uchar);
+    switch (type)
+    {
+        case IS_NULL:
+        case IS_TRUE:
+        case IS_FALSE:
+        case IS_LONG:
+        case IS_DOUBLE:
+            swoole_unserialize_raw(buffer, return_value);
+            Z_TYPE_INFO_P(return_value) = type;
+            return;
+        case IS_STRING:
+            len -= sizeof (zend_uchar);
+            zend_string *str = swoole_unserialize_string(buffer, len);
+            RETURN_STR(str);
+        case IS_ARRAY:
+            swoole_unserialize_arr(buffer, return_value);
+            break;
+        case IS_OBJECT:
+            swoole_unserialize_object(buffer, return_value, object_args);
+            break;
+        default:
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+
+            break;
+    }
+}
+
+PHP_FUNCTION(swoole_serialize)
+{
+    zval *zvalue;
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "z", &zvalue) == FAILURE)
+    {
+
+        return;
+    }
+
+    zend_string *z_str = php_swoole_serialize(zvalue);
 
     RETURN_STR(z_str);
 }
@@ -591,34 +631,8 @@ PHP_FUNCTION(swoole_unserialize)
     {
         return;
     }
-    zend_uchar type = *(zend_uchar*) (buffer);
-    buffer += sizeof (zend_uchar);
-    switch (type)
-    {
-        case IS_UNDEF:
-        case IS_NULL:
-        case IS_TRUE:
-        case IS_FALSE:
-        case IS_LONG:
-        case IS_DOUBLE:
-            swoole_unserialize_raw(buffer, return_value);
-            Z_TYPE_INFO_P(return_value) = type;
-            return;
-        case IS_STRING:
-            arg_len -= sizeof (zend_uchar);
-            zend_string *str = swoole_unserialize_string(buffer, arg_len);
-            RETURN_STR(str);
-        case IS_ARRAY:
-            swoole_unserialize_arr(buffer, return_value);
-            break;
-        case IS_OBJECT:
-            swoole_unserialize_object(buffer, return_value, args);
-            break;
-        default:
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
 
-            break;
-    }
+    php_swoole_unserialize(buffer, arg_len, return_value, args);
 
 }
 
