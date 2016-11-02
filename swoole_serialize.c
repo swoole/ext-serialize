@@ -92,7 +92,6 @@ static CPINLINE void swoole_set_zend_value(seriaString *str, void *value)
 static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 {
     //Initialize zend array
-    int len = 0;
     zend_ulong h, nIndex, max_index = 0;
     ZVAL_NEW_ARR(zvalue);
     seriaArray *seriaArr = (seriaArray*) buffer;
@@ -108,13 +107,14 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
     ht->nTableMask = -(ht->nTableSize);
     ht->pDestructor = ZVAL_PTR_DTOR;
 
-    len = HT_SIZE(ht);
-    //    void *arData = ecalloc(1, len);
-    void *arData = emalloc(len);
-    HT_SET_DATA_ADDR(ht, arData);
     GC_REFCOUNT(ht) = 1;
     GC_TYPE_INFO(ht) = IS_ARRAY;
-    HT_HASH_RESET(ht);
+    if (ht->nNumUsed)
+    {
+        //    void *arData = ecalloc(1, len);
+        HT_SET_DATA_ADDR(ht, emalloc(HT_SIZE(ht)));
+        HT_HASH_RESET(ht);
+    }
 
 
     int idx;
@@ -176,8 +176,6 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
             }
         }
 
-
-
         /* Initialize hash */
         nIndex = h | ht->nTableMask;
         Z_NEXT(p->val) = HT_HASH(ht, nIndex);
@@ -208,6 +206,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
             }
             p->val.value.str = zend_string_init((char*) buffer, data_len, 0);
             buffer += data_len;
+            Z_TYPE_INFO(p->val) = IS_STRING_EX;
         }
         else if (type.data_type == IS_ARRAY)
         {
@@ -241,7 +240,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
         else if (type.data_type == IS_UNDEF)
         {
             buffer = swoole_unserialize_object(buffer, &p->val, NULL);
-            p->val.u1.v.type = IS_OBJECT;
+            Z_TYPE_INFO(p->val) = IS_OBJECT_EX;
         }
 
     }
