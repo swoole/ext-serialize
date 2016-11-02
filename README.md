@@ -26,3 +26,6 @@ $arr = swoole_unserialize($str);
 
 Apache License Version 2.0 see http://www.apache.org/licenses/LICENSE-2.0.html
 
+## todo
+检测循环引用
+完善对象的支持

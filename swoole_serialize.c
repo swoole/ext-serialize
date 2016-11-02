@@ -41,7 +41,7 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar 
     str->offset = _STR_HEADER_SIZE;
     //zend string addr
     str->buffer = emalloc(total);
-    bzero(str->buffer, total);
+    memset(str->buffer, total);
     if (!str->buffer)
     {
         php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc Error: %s [%d]", strerror(errno), errno);
