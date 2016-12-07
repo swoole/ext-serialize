@@ -41,7 +41,7 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar 
     str->offset = _STR_HEADER_SIZE;
     //zend string addr
     str->buffer = emalloc(total);
-    memset(str->buffer, 0, total);
+    memset(str->buffer, total);
     if (!str->buffer)
     {
         php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc Error: %s [%d]", strerror(errno), errno);
@@ -465,9 +465,9 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
         zend_fcall_info_cache fcc = {0};
         fci.size = sizeof (zend_fcall_info);
         zval retval;
-        fci.function_table = &ce->function_table;
+//        fci.function_table = &ce->function_table;
         ZVAL_UNDEF(&fci.function_name);
-        fci.symbol_table = NULL;
+//        fci.symbol_table = NULL;
         fci.retval = &retval;
         fci.param_count = 0;
         fci.params = NULL;
@@ -477,7 +477,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
 
         fcc.initialized = 1;
         fcc.function_handler = ce->constructor;
-        fcc.calling_scope = EG(scope);
+//        fcc.calling_scope = EG(scope);
         fcc.called_scope = ce;
         fcc.object = Z_OBJ_P(return_value);
         fci.object = Z_OBJ_P(return_value);
