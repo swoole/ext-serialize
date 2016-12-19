@@ -113,6 +113,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
     {
         //    void *arData = ecalloc(1, len);
         HT_SET_DATA_ADDR(ht, emalloc(HT_SIZE(ht)));
+        ht->u.flags |= HASH_FLAG_INITIALIZED;
         HT_HASH_RESET(ht);
     }
 
@@ -371,15 +372,35 @@ try_again:
             case IS_DOUBLE:
                 swoole_set_zend_value(buffer, &(data->value));
                 break;
-            case IS_ARRAY:
-                swoole_serialize_arr(buffer, Z_ARRVAL_P(data));
-                break;
-
             case IS_REFERENCE:
                 data = Z_REFVAL_P(data);
                 ((SBucketType*) (buffer->buffer + p))->data_type = Z_TYPE_P(data);
                 goto try_again;
                 break;
+            case IS_ARRAY:
+            {
+
+                if (ZEND_HASH_GET_APPLY_COUNT(Z_ARRVAL_P(data)) > 1)
+                {
+                    php_error_docref(NULL TSRMLS_CC, E_NOTICE, "swoole_serialize do not support cycle ref");
+                    break;
+                }
+                else
+                {
+                    if (ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+                    {
+                        ZEND_HASH_INC_APPLY_COUNT(Z_ARRVAL_P(data));
+                        swoole_serialize_arr(buffer, Z_ARRVAL_P(data));
+                        ZEND_HASH_DEC_APPLY_COUNT(Z_ARRVAL_P(data));
+                    }
+                    else
+                    {
+                        swoole_serialize_arr(buffer, Z_ARRVAL_P(data));
+                    }
+
+                }
+                break;
+            }
                 //object propterty table is this type
             case IS_INDIRECT:
                 data = Z_INDIRECT_P(data);
@@ -425,17 +446,119 @@ static CPINLINE void swoole_unserialize_raw(void *buffer, zval *zvalue)
     memcpy(&zvalue->value, buffer, sizeof (zend_value));
 }
 
+/*
+ * null
+ */
+
+static CPINLINE void swoole_unserialize_null(void *buffer, zval *zvalue)
+{
+
+    memcpy(&zvalue->value, buffer, sizeof (zend_value));
+}
+
 static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
 {
 
     swoole_string_cpy(buffer, &zvalue->value, sizeof (zend_value));
 }
 
-static void swoole_serialize_object(void *buffer, zval *zvalue)
+static void swoole_serialize_object(void *buffer, zval *obj)
 {
-    zend_string *name = Z_OBJCE_P(zvalue)->name;
+    zend_string *name = Z_OBJCE_P(obj)->name;
+    zend_class_entry *ce = Z_OBJ_P(obj)->ce;
     swoole_string_cpy(buffer, (char*) name + XtOffsetOf(zend_string, len), sizeof (size_t) + name->len);
-    swoole_serialize_arr(buffer, Z_OBJPROP_P(zvalue));
+
+    if (ce && zend_hash_exists(&ce->function_table, Z_STR(swSeriaG.sleep_fname)))
+    {
+        zval retval;
+        if (call_user_function_ex(NULL, obj, &swSeriaG.sleep_fname, &retval, 0, 0, 1, NULL) == SUCCESS)
+        {
+            if (EG(exception))
+            {
+                zval_dtor(&retval);
+                return;
+            }
+            if (Z_TYPE(retval) == IS_ARRAY)
+            {
+                zend_string *prop_key;
+                zval *prop_value, zval_for_seria, *sleep_value;
+                const char *prop_name, *class_name;
+                size_t prop_key_len;
+                int got_num = 0;
+
+                //for the zero malloc
+                zend_array *ht = (zend_array *) alloca(sizeof (zend_array));
+                _zend_hash_init(ht, zend_hash_num_elements(Z_ARRVAL(retval)), ZVAL_PTR_DTOR, 0 ZEND_FILE_LINE_RELAY_CC);
+                ht->nTableMask = -(ht)->nTableSize;
+                HT_SET_DATA_ADDR(ht, alloca(HT_SIZE(ht)));
+                ht->u.flags |= HASH_FLAG_INITIALIZED;
+                HT_HASH_RESET(ht);
+
+                //just clean property do not add null when does not exist
+                //we double for each, cause we do not malloc  and release it
+
+                ZEND_HASH_FOREACH_STR_KEY_VAL(Z_OBJPROP_P(obj), prop_key, prop_value)
+                {
+                    //get origin property name
+                    zend_unmangle_property_name_ex(prop_key, &class_name, &prop_name, &prop_key_len);
+
+                    ZEND_HASH_FOREACH_VAL(Z_ARRVAL(retval), sleep_value)
+                    {
+                        if (Z_TYPE_P(sleep_value) == IS_STRING &&
+                                Z_STRLEN_P(sleep_value) == prop_key_len &&
+                                memcmp(Z_STRVAL_P(sleep_value), prop_name, prop_key_len) == 0)
+                        {
+                            got_num++;
+                            //add mangle key,unmangle in unseria 
+                            _zend_hash_add_or_update(ht, prop_key, prop_value, HASH_UPDATE ZEND_FILE_LINE_RELAY_CC);
+
+                            break;
+                        }
+
+                    }
+                    ZEND_HASH_FOREACH_END();
+
+                }
+                ZEND_HASH_FOREACH_END();
+
+                //there some member not in property
+                if (zend_hash_num_elements(Z_ARRVAL(retval)) > got_num)
+                {
+                    php_error_docref(NULL TSRMLS_CC, E_NOTICE, "__sleep() retrun a member but does not exist in property");
+
+                }
+
+                swoole_serialize_arr(buffer, ht);
+                zval_dtor(&retval);
+                return;
+
+            }
+            else
+            {
+
+                php_error_docref(NULL TSRMLS_CC, E_NOTICE, " __sleep should return an array only containing the "
+                        "names of instance-variables to serialize");
+                zval_dtor(&retval);
+            }
+
+        }
+    }
+
+    swoole_serialize_arr(buffer, Z_OBJPROP_P(obj));
+}
+
+/*
+ * for the zero malloc
+ */
+static CPINLINE zend_string *swoole_string_init(const char *str, size_t len)
+{
+
+    zend_string *ret = (zend_string *) alloca(ZEND_MM_ALIGNED_SIZE(_ZSTR_STRUCT_SIZE(len)));
+    zend_string_forget_hash_val(ret);
+    ZSTR_LEN(ret) = len;
+    memcpy(ZSTR_VAL(ret), str, len);
+    ZSTR_VAL(ret)[len] = '\0';
+    return ret;
 }
 
 static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *args)
@@ -443,56 +566,51 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
     zval property;
     size_t name_len = *((size_t*) buffer);
     buffer += sizeof (size_t);
-    zend_string *class_name = zend_string_init((char*) buffer, name_len, 0);
+    zend_string *class_name = swoole_string_init((char*) buffer, name_len);
     buffer += name_len;
     buffer = swoole_unserialize_arr(buffer, &property);
 
-
-
-    //user class
-    zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
-    zend_string_release(class_name);
+    //user class , do not support incomplete class now
+    zend_class_entry *ce = zend_lookup_class(class_name);
     if (!ce)
     {
-        php_error_docref(NULL TSRMLS_CC, E_ERROR, "Could not find class");
+        zend_throw_exception_ex(NULL, 0, "can not find class %s", class_name->val TSRMLS_CC);
     }
     if (ce->constructor)
     {
 
         object_init_ex(return_value, ce);
 
-        zend_fcall_info fci = {0};
-        zend_fcall_info_cache fcc = {0};
-        fci.size = sizeof (zend_fcall_info);
-        zval retval;
-        //        fci.function_table = &ce->function_table;
-        ZVAL_UNDEF(&fci.function_name);
-        //        fci.symbol_table = NULL;
-        fci.retval = &retval;
-        fci.param_count = 0;
-        fci.params = NULL;
-        fci.no_separation = 1;
-
-        zend_fcall_info_args_ex(&fci, ce->constructor, args);
-
-        fcc.initialized = 1;
-        fcc.function_handler = ce->constructor;
-        //        fcc.calling_scope = EG(scope);
-        fcc.called_scope = ce;
-        fcc.object = Z_OBJ_P(return_value);
-        fci.object = Z_OBJ_P(return_value);
-
-        if (zend_call_function(&fci, &fcc) == FAILURE)
-        {
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "could not call class constructor");
-        }
-        else
-        {//??? free something?
-            //cp_zval_ptr_dtor(&args);
-        }
+        //        zend_fcall_info fci = {0};
+        //        zend_fcall_info_cache fcc = {0};
+        //        fci.size = sizeof (zend_fcall_info);
+        //        zval retval;
+        //        ZVAL_UNDEF(&fci.function_name);
+        //        fci.retval = &retval;
+        //        fci.param_count = 0;
+        //        fci.params = NULL;
+        //        fci.no_separation = 1;
+        //
+        //        zend_fcall_info_args_ex(&fci, ce->constructor, args);
+        //
+        //        fcc.initialized = 1;
+        //        fcc.function_handler = ce->constructor;
+        //        fcc.called_scope = ce;
+        //        fcc.object = Z_OBJ_P(return_value);
+        //        fci.object = Z_OBJ_P(return_value);
+        //
+        //        if (zend_call_function(&fci, &fcc) == FAILURE)
+        //        {
+        //            php_error_docref(NULL TSRMLS_CC, E_ERROR, "could not call class constructor");
+        //        }
+        //        else
+        //        {//??? free something?
+        //            //cp_zval_ptr_dtor(&args);
+        //        }
     }
     else
     {
+
         object_init_ex(return_value, ce);
     }
 
@@ -502,16 +620,27 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
 
     ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL(property), index, key, data)
     {
-        //            zend_update_property(ce, return_value, key->val, key->len, data TSRMLS_CC);
-        const char *prop_name;
+
+        const char *prop_name, *tmp;
         size_t prop_len;
-        const char *tmp;
         zend_unmangle_property_name_ex(key, &tmp, &prop_name, &prop_len);
         zend_update_property(ce, return_value, prop_name, prop_len, data);
     }
     ZEND_HASH_FOREACH_END();
 
     zval_dtor(&property);
+
+    //call object __wakeup
+    if (zend_hash_str_exists(&ce->function_table, "__wakeup", sizeof ("__wakeup") - 1))
+    {
+        zval ret, wakeup;
+        zend_string *fname = swoole_string_init("__wakeup", sizeof ("__wakeup") - 1);
+        Z_STR(wakeup) = fname;
+        Z_TYPE_INFO(wakeup) = IS_STRING_EX;
+        call_user_function_ex(CG(function_table), return_value, &wakeup, &ret, 0, NULL, 1, NULL);
+        zval_ptr_dtor(&ret);
+    }
+
     return buffer;
 
 }
@@ -528,6 +657,7 @@ again:
         case IS_NULL:
         case IS_TRUE:
         case IS_FALSE:
+            break;
         case IS_LONG:
         case IS_DOUBLE:
             swoole_serialize_raw(buffer, zvalue);
@@ -560,12 +690,11 @@ PHP_SWOOLE_SERIALIZE_API zend_string* php_swoole_serialize(zval *zvalue)
     zend_string *z_str = (zend_string *) str.buffer;
 
     z_str->val[str.offset] = '\0';
-    z_str->len = str.offset + 1 - _STR_HEADER_SIZE;
+    z_str->len = str.offset - _STR_HEADER_SIZE;
     z_str->h = 0;
     GC_REFCOUNT(z_str) = 1;
-    GC_TYPE(z_str) = IS_STRING;
-    GC_FLAGS(z_str) = 0;
-    GC_INFO(z_str) = 0;
+    GC_TYPE_INFO(z_str) = IS_STRING;
+
     return z_str;
 }
 
@@ -584,6 +713,8 @@ PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, 
         case IS_NULL:
         case IS_TRUE:
         case IS_FALSE:
+            Z_TYPE_INFO_P(return_value) = type;
+            return;
         case IS_LONG:
         case IS_DOUBLE:
             swoole_unserialize_raw(buffer, return_value);
@@ -628,6 +759,7 @@ PHP_FUNCTION(swoole_unserialize)
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "s|a", &buffer, &arg_len, &args) == FAILURE)
     {
+
         return;
     }
 
@@ -640,9 +772,10 @@ PHP_FUNCTION(swoole_unserialize)
 PHP_MINIT_FUNCTION(swoole_serialize)
 {
 
-    /* If you have INI entries, uncomment these lines
-    REGISTER_INI_ENTRIES();
-     */
+
+    ZVAL_STRING(&swSeriaG.sleep_fname, "__sleep");
+    ZVAL_STRING(&swSeriaG.weekup_fname, "__weekup");
+
     return SUCCESS;
 }
 /* }}} */

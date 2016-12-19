@@ -95,21 +95,28 @@ typedef struct _SBucket {
 } SBucket;
 
 typedef struct _SStringKey {
-        zend_ulong        h;
-	char*              val;
-}SStringKey;
+    zend_ulong h;
+    char* val;
+} SStringKey;
 
 typedef struct _SStringData {
-        size_t            len;
-	char              val[1];
-}SStringData;
+    size_t len;
+    char val[1];
+} SStringData;
 
 typedef struct _SBucketType {
     zend_uchar key_type : 1;
     zend_uchar key_len : 2;
     zend_uchar data_len : 2;
-    zend_uchar data_type : 3;//todo IS_UNDEF means object
+    zend_uchar data_type : 3; //todo IS_UNDEF means object
 } SBucketType;
+
+struct _swSeriaG {
+    zval sleep_fname;
+    zval weekup_fname;
+};
+
+struct _swSeriaG swSeriaG;
 
 #define SERIA_SET_ENTRY_TYPE(buffer,type)        *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
                                                  buffer->offset += 1;
