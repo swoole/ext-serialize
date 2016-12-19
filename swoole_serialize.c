@@ -487,10 +487,12 @@ static void swoole_serialize_object(void *buffer, zval *obj)
                 int got_num = 0;
 
                 //for the zero malloc
-                zend_array *ht = (zend_array *) alloca(sizeof (zend_array));
+                zend_array tmp_arr;
+                zend_array *ht = (zend_array *) & tmp_arr;
                 _zend_hash_init(ht, zend_hash_num_elements(Z_ARRVAL(retval)), ZVAL_PTR_DTOR, 0 ZEND_FILE_LINE_RELAY_CC);
                 ht->nTableMask = -(ht)->nTableSize;
-                HT_SET_DATA_ADDR(ht, alloca(HT_SIZE(ht)));
+                ALLOCA_FLAG(use_heap);
+                HT_SET_DATA_ADDR(ht, do_alloca(HT_SIZE(ht), use_heap));
                 ht->u.flags |= HASH_FLAG_INITIALIZED;
                 HT_HASH_RESET(ht);
 
@@ -529,6 +531,8 @@ static void swoole_serialize_object(void *buffer, zval *obj)
                 }
 
                 swoole_serialize_arr(buffer, ht);
+
+                ZSTR_ALLOCA_FREE(ht, use_heap);
                 zval_dtor(&retval);
                 return;
 
@@ -552,13 +556,53 @@ static void swoole_serialize_object(void *buffer, zval *obj)
  */
 static CPINLINE zend_string *swoole_string_init(const char *str, size_t len)
 {
+    ALLOCA_FLAG(use_heap);
+    zend_string *ret;
+    ZSTR_ALLOCA_INIT(ret, str, len, use_heap);
 
-    zend_string *ret = (zend_string *) alloca(ZEND_MM_ALIGNED_SIZE(_ZSTR_STRUCT_SIZE(len)));
-    zend_string_forget_hash_val(ret);
-    ZSTR_LEN(ret) = len;
-    memcpy(ZSTR_VAL(ret), str, len);
-    ZSTR_VAL(ret)[len] = '\0';
     return ret;
+}
+
+/*
+ * for the zero malloc
+ */
+static CPINLINE void swoole_string_release(zend_string *str)
+{
+    ALLOCA_FLAG(use_heap);
+    ZSTR_ALLOCA_FREE(str, use_heap);
+}
+
+static CPINLINE zend_class_entry* swoole_try_get_ce(zend_string *class_name)
+{
+    //user class , do not support incomplete class now
+    zend_class_entry *ce = zend_lookup_class(class_name);
+    if (ce)
+    {
+        return ce;
+    }
+
+    // try call unserialize callback and retry lookup 
+    zval user_func, args[1], retval;
+    zend_string *fname = swoole_string_init(PG(unserialize_callback_func), strlen(PG(unserialize_callback_func)));
+    Z_STR(user_func) = fname;
+    Z_TYPE_INFO(user_func) = IS_STRING_EX;
+    ZVAL_STR(&args[0], class_name);
+
+    call_user_function_ex(CG(function_table), NULL, &user_func, &retval, 1, args, 0, NULL);
+
+    swoole_string_release(fname);
+
+    //user class , do not support incomplete class now
+    ce = zend_lookup_class(class_name);
+    if (!ce)
+    {
+        zend_throw_exception_ex(NULL, 0, "can not find class %s", class_name->val TSRMLS_CC);
+        return NULL;
+    }
+    else
+    {
+        return ce;
+    }
 }
 
 static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *args)
@@ -567,15 +611,18 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
     size_t name_len = *((size_t*) buffer);
     buffer += sizeof (size_t);
     zend_string *class_name = swoole_string_init((char*) buffer, name_len);
+
+    zend_class_entry *ce = swoole_try_get_ce(class_name);
+    swoole_string_release(class_name);
+
+    if (!ce)
+    {
+        return;
+    }
+
     buffer += name_len;
     buffer = swoole_unserialize_arr(buffer, &property);
 
-    //user class , do not support incomplete class now
-    zend_class_entry *ce = zend_lookup_class(class_name);
-    if (!ce)
-    {
-        zend_throw_exception_ex(NULL, 0, "can not find class %s", class_name->val TSRMLS_CC);
-    }
     if (ce->constructor)
     {
 
@@ -638,6 +685,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
         Z_STR(wakeup) = fname;
         Z_TYPE_INFO(wakeup) = IS_STRING_EX;
         call_user_function_ex(CG(function_table), return_value, &wakeup, &ret, 0, NULL, 1, NULL);
+        swoole_string_release(fname);
         zval_ptr_dtor(&ret);
     }
 
@@ -737,15 +785,22 @@ PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, 
     }
 }
 
+//static void test()
+//{
+//        zend_string *fname = swoole_string_init("__wakeup", sizeof ("__wakeup") - 1);
+////    zend_string *fname = zend_string_init("__wakeup", sizeof ("__wakeup") - 1, 0);
+////    zend_string_release(fname);
+//swoole_string_release(fname);
+//}
+
 PHP_FUNCTION(swoole_serialize)
 {
+
     zval *zvalue;
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "z", &zvalue) == FAILURE)
     {
-
         return;
     }
-
     zend_string *z_str = php_swoole_serialize(zvalue);
 
     RETURN_STR(z_str);
