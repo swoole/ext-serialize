@@ -382,8 +382,7 @@ try_again:
 
                 if (ZEND_HASH_GET_APPLY_COUNT(Z_ARRVAL_P(data)) > 1)
                 {
-                    php_error_docref(NULL TSRMLS_CC, E_NOTICE, "swoole_serialize do not support cycle ref");
-                    break;
+                    php_error_docref(NULL TSRMLS_CC, E_NOTICE, "you array have cycle ref");
                 }
                 else
                 {
@@ -408,9 +407,22 @@ try_again:
                 goto try_again;
                 break;
             case IS_OBJECT:
+            {
                 ((SBucketType*) (buffer->buffer + p))->data_type = IS_UNDEF;
-                swoole_serialize_object(buffer, data);
+
+                if (ZEND_HASH_APPLY_PROTECTION(Z_OBJPROP_P(data)))
+                {
+                    ZEND_HASH_INC_APPLY_COUNT(Z_OBJPROP_P(data));
+                    swoole_serialize_object(buffer, data);
+                    ZEND_HASH_DEC_APPLY_COUNT(Z_OBJPROP_P(data));
+                }
+                else
+                {
+                    swoole_serialize_object(buffer, data);
+                }
+
                 break;
+            }
             default:// check tail space
                 swoole_check_size(buffer, 0);
                 break;
@@ -465,6 +477,11 @@ static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
 static void swoole_serialize_object(void *buffer, zval *obj)
 {
     zend_string *name = Z_OBJCE_P(obj)->name;
+    if (ZEND_HASH_GET_APPLY_COUNT(Z_OBJPROP_P(obj)) > 1)
+    {
+        zend_throw_exception_ex(NULL, 0, "the object %s have cycle ref!",name->val);
+        return;
+    }
     zend_class_entry *ce = Z_OBJ_P(obj)->ce;
     swoole_string_cpy(buffer, (char*) name + XtOffsetOf(zend_string, len), sizeof (size_t) + name->len);
 
@@ -481,7 +498,7 @@ static void swoole_serialize_object(void *buffer, zval *obj)
             if (Z_TYPE(retval) == IS_ARRAY)
             {
                 zend_string *prop_key;
-                zval *prop_value, zval_for_seria, *sleep_value;
+                zval *prop_value, *sleep_value;
                 const char *prop_name, *class_name;
                 size_t prop_key_len;
                 int got_num = 0;
@@ -492,7 +509,8 @@ static void swoole_serialize_object(void *buffer, zval *obj)
                 _zend_hash_init(ht, zend_hash_num_elements(Z_ARRVAL(retval)), ZVAL_PTR_DTOR, 0 ZEND_FILE_LINE_RELAY_CC);
                 ht->nTableMask = -(ht)->nTableSize;
                 ALLOCA_FLAG(use_heap);
-                HT_SET_DATA_ADDR(ht, do_alloca(HT_SIZE(ht), use_heap));
+                void *ht_addr = do_alloca(HT_SIZE(ht), use_heap);
+                HT_SET_DATA_ADDR(ht, ht_addr);
                 ht->u.flags |= HASH_FLAG_INITIALIZED;
                 HT_HASH_RESET(ht);
 
@@ -529,17 +547,14 @@ static void swoole_serialize_object(void *buffer, zval *obj)
                     php_error_docref(NULL TSRMLS_CC, E_NOTICE, "__sleep() retrun a member but does not exist in property");
 
                 }
-
                 swoole_serialize_arr(buffer, ht);
-
-                ZSTR_ALLOCA_FREE(ht, use_heap);
+                ZSTR_ALLOCA_FREE(ht_addr, use_heap);
                 zval_dtor(&retval);
                 return;
 
             }
             else
             {
-
                 php_error_docref(NULL TSRMLS_CC, E_NOTICE, " __sleep should return an array only containing the "
                         "names of instance-variables to serialize");
                 zval_dtor(&retval);
@@ -580,7 +595,6 @@ static CPINLINE zend_class_entry* swoole_try_get_ce(zend_string *class_name)
     {
         return ce;
     }
-
     // try call unserialize callback and retry lookup 
     zval user_func, args[1], retval;
     zend_string *fname = swoole_string_init(PG(unserialize_callback_func), strlen(PG(unserialize_callback_func)));
