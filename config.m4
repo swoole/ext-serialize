@@ -59,5 +59,5 @@ if test "$PHP_SWOOLE_SERIALIZE" != "no"; then
   dnl
   dnl PHP_SUBST(SWOOLE_SERIALIZE_SHARED_LIBADD)
 
-  PHP_NEW_EXTENSION(swoole_serialize, swoole_serialize.c, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
+  PHP_NEW_EXTENSION(swoole_serialize, swoole_serialize.c , $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 fi

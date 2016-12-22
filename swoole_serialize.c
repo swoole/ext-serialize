@@ -40,8 +40,9 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar 
     //escape the header for later
     str->offset = _STR_HEADER_SIZE;
     //zend string addr
-    str->buffer = emalloc(total);
-    memset(str->buffer, 0, total);
+    str->buffer = ecalloc(1, total);
+    //    str->buffer = emalloc(total);
+    //    memset(str->buffer,total,0);
     if (!str->buffer)
     {
         php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc Error: %s [%d]", strerror(errno), errno);
@@ -99,6 +100,11 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 
     //Initialize buckets
     zend_array *ht = Z_ARR_P(zvalue);
+    if (seriaArr->nNumOfElements > seriaArr->nTableSize)
+    {
+        php_error_docref(NULL TSRMLS_CC, E_NOTICE, "invalid unserialize data");
+        return NULL;
+    }
     ht->nTableSize = seriaArr->nTableSize;
     ht->nNumUsed = seriaArr->nNumOfElements;
     ht->nNumOfElements = seriaArr->nNumOfElements;
@@ -479,7 +485,7 @@ static void swoole_serialize_object(void *buffer, zval *obj)
     zend_string *name = Z_OBJCE_P(obj)->name;
     if (ZEND_HASH_GET_APPLY_COUNT(Z_OBJPROP_P(obj)) > 1)
     {
-        zend_throw_exception_ex(NULL, 0, "the object %s have cycle ref!",name->val);
+        zend_throw_exception_ex(NULL, 0, "the object %s have cycle ref!", name->val);
         return;
     }
     zend_class_entry *ce = Z_OBJ_P(obj)->ce;
@@ -637,43 +643,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
     buffer += name_len;
     buffer = swoole_unserialize_arr(buffer, &property);
 
-    if (ce->constructor)
-    {
-
-        object_init_ex(return_value, ce);
-
-        //        zend_fcall_info fci = {0};
-        //        zend_fcall_info_cache fcc = {0};
-        //        fci.size = sizeof (zend_fcall_info);
-        //        zval retval;
-        //        ZVAL_UNDEF(&fci.function_name);
-        //        fci.retval = &retval;
-        //        fci.param_count = 0;
-        //        fci.params = NULL;
-        //        fci.no_separation = 1;
-        //
-        //        zend_fcall_info_args_ex(&fci, ce->constructor, args);
-        //
-        //        fcc.initialized = 1;
-        //        fcc.function_handler = ce->constructor;
-        //        fcc.called_scope = ce;
-        //        fcc.object = Z_OBJ_P(return_value);
-        //        fci.object = Z_OBJ_P(return_value);
-        //
-        //        if (zend_call_function(&fci, &fcc) == FAILURE)
-        //        {
-        //            php_error_docref(NULL TSRMLS_CC, E_ERROR, "could not call class constructor");
-        //        }
-        //        else
-        //        {//??? free something?
-        //            //cp_zval_ptr_dtor(&args);
-        //        }
-    }
-    else
-    {
-
-        object_init_ex(return_value, ce);
-    }
+    object_init_ex(return_value, ce);
 
     zval *data;
     const zend_string *key;
@@ -688,8 +658,36 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zval *a
         zend_update_property(ce, return_value, prop_name, prop_len, data);
     }
     ZEND_HASH_FOREACH_END();
-
     zval_dtor(&property);
+
+    if (ce->constructor)
+    {
+        zend_fcall_info fci = {0};
+        zend_fcall_info_cache fcc = {0};
+        fci.size = sizeof (zend_fcall_info);
+        zval retval;
+        ZVAL_UNDEF(&fci.function_name);
+        fci.retval = &retval;
+        fci.param_count = 0;
+        fci.params = NULL;
+        fci.no_separation = 1;
+        fci.object = Z_OBJ_P(return_value);
+
+        zend_fcall_info_args_ex(&fci, ce->constructor, args);
+
+        fcc.initialized = 1;
+        fcc.function_handler = ce->constructor;
+        fcc.calling_scope = EG(scope);
+        fcc.called_scope = Z_OBJCE_P(return_value);
+        fcc.object = Z_OBJ_P(return_value);
+
+        if (zend_call_function(&fci, &fcc) == FAILURE)
+        {
+            zend_throw_exception_ex(NULL, 0, "could not call class constructor");
+        }
+        zend_fcall_info_args_clear(&fci, 1);
+    }
+
 
     //call object __wakeup
     if (zend_hash_str_exists(&ce->function_table, "__wakeup", sizeof ("__wakeup") - 1))
@@ -738,7 +736,7 @@ again:
             swoole_serialize_object(buffer, zvalue);
             break;
         default:
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+            php_error_docref(NULL TSRMLS_CC, E_NOTICE, "swoole serialize not support this type ");
 
             break;
     }
@@ -746,6 +744,7 @@ again:
 
 PHP_SWOOLE_SERIALIZE_API zend_string* php_swoole_serialize(zval *zvalue)
 {
+
     seriaString str;
     swoole_string_new(SERIA_SIZE, &str, Z_TYPE_P(zvalue));
     swoole_seria_dispatch(&str, zvalue); //serialize into a string
@@ -793,7 +792,8 @@ PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, 
             swoole_unserialize_object(buffer, return_value, object_args);
             break;
         default:
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "swoole serialize not support this type ");
+            ZVAL_FALSE(return_value);
+            php_error_docref(NULL TSRMLS_CC, E_NOTICE, "swoole serialize not support this type ");
 
             break;
     }
@@ -831,22 +831,51 @@ PHP_FUNCTION(swoole_unserialize)
 
         return;
     }
-
     php_swoole_unserialize(buffer, arg_len, return_value, args);
+    return;
 
 }
+
+
+const zend_function_entry swSerialize_methods[] = {
+    ZEND_FENTRY(pack, ZEND_FN(swoole_serialize), NULL, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    ZEND_FENTRY(unpack, ZEND_FN(swoole_unserialize), NULL, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    PHP_ME(swSerialize, __construct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
+    PHP_ME(swSerialize, __destruct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_DTOR)
+    PHP_FE_END
+};
+
+zend_class_entry *swoole_serialize_class_entry_ptr;
 
 /* {{{ PHP_MINIT_FUNCTION
  */
 PHP_MINIT_FUNCTION(swoole_serialize)
 {
 
-
     ZVAL_STRING(&swSeriaG.sleep_fname, "__sleep");
     ZVAL_STRING(&swSeriaG.weekup_fname, "__weekup");
 
+    zend_class_entry swoole_serialize_ce;
+    INIT_CLASS_ENTRY(swoole_serialize_ce, "swSerialize", swSerialize_methods);
+    swoole_serialize_class_entry_ptr = zend_register_internal_class(&swoole_serialize_ce TSRMLS_CC);
+
     return SUCCESS;
 }
+
+
+PHP_METHOD(swSerialize, __construct)
+{//do noting now
+    return;
+}
+
+PHP_METHOD(swSerialize, __destruct)
+{
+//do noting now
+    return;
+}
+
+
+
 /* }}} */
 
 /* {{{ PHP_MSHUTDOWN_FUNCTION

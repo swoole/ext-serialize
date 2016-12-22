@@ -24,7 +24,7 @@
 extern zend_module_entry swoole_serialize_module_entry;
 #define phpext_swoole_serialize_ptr &swoole_serialize_module_entry
 
-#define PHP_SWOOLE_SERIALIZE_VERSION "0.1.0" /* Replace with version number for your extension */
+#define PHP_SWOOLE_SERIALIZE_VERSION "0.1.1"
 
 #ifdef PHP_WIN32
 #define PHP_SWOOLE_SERIALIZE_API __declspec(dllexport)
@@ -137,7 +137,8 @@ struct _swSeriaG swSeriaG;
 PHP_SWOOLE_SERIALIZE_API zend_string* php_swoole_serialize(zval *val);
 PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, zval *return_value, zval *object_args);
 
-
+PHP_METHOD(swSerialize, __construct);
+PHP_METHOD(swSerialize, __destruct);
 
 #endif	/* PHP_SWOOLE_SERIALIZE_H */
 
