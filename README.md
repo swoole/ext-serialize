@@ -17,18 +17,38 @@ phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">php.i
 
 ## 使用
 ```$str = swoole_serialize($arr);``` <br/>
-```$arr = swoole_unserialize($str);```
+```$arr = swoole_unserialize($str);```<br/>
 
 or
 
-```$str = swSerialize::pack($arr);```
-```$arr = swSerialize::unpack($str);```
+```$str = swSerialize::pack($arr);```<br/>
+```$arr = swSerialize::unpack($str);```<br/>
 
 or
 
-```$o = new swSerialize();```
-```$str = $o->pack($arr);```
-```$o->unpack($str);```
+```$o = new swSerialize();```<br/>
+```$str = $o->pack($arr);```<br/>
+```$o->unpack($str);```<br/>
+
+###### unpack args
+```
+class obj{
+    
+    
+    public function __construct($a,$b){
+        $this->a = $a; 
+        $this->b = $b; 
+
+  
+  }
+
+}
+
+$o = new obj(1,2);
+$ser = swSerialize::pack($o);
+var_dump(swSerialize::unpack($ser,array(3,4)));
+
+```
 
 ## contact us
 - http://weibo.com/u/2661945152
