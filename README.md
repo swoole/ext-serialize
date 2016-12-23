@@ -16,7 +16,7 @@ phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">php.i
 - 支持常用的__sleep __wakeup __autoload等特性。
 
 ## 使用
-```$str = swoole_serialize($arr);```
+```$str = swoole_serialize($arr);``` <br/>
 ```$arr = swoole_unserialize($str);```
 
 or
@@ -26,9 +26,9 @@ or
 
 or
 
-$o = new swSerialize();
-$str = $o->pack($arr);
-$o->unpack($str);
+```$o = new swSerialize();```
+```$str = $o->pack($arr);```
+```$o->unpack($str);```
 
 ## contact us
 - http://weibo.com/u/2661945152
