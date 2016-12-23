@@ -86,6 +86,49 @@ static CPINLINE void swoole_set_zend_value(seriaString *str, void *value)
     str->offset = sizeof (zend_value) + str->offset;
 }
 
+static uint32_t CPINLINE cp_zend_hash_check_size(uint32_t nSize)
+{
+#if defined(ZEND_WIN32)
+    unsigned long index;
+#endif
+
+    /* Use big enough power of 2 */
+    /* size should be between HT_MIN_SIZE and HT_MAX_SIZE */
+    if (nSize < HT_MIN_SIZE)
+    {
+        nSize = HT_MIN_SIZE;
+    }
+        //    else if (UNEXPECTED(nSize >= 1000000))
+    else if (UNEXPECTED(nSize >= HT_MAX_SIZE))
+    {
+        php_error_docref(NULL TSRMLS_CC, E_NOTICE, "invalid unserialize data");
+        return 0;
+    }
+
+#if defined(ZEND_WIN32)
+    if (BitScanReverse(&index, nSize - 1))
+    {
+        return 0x2 << ((31 - index) ^ 0x1f);
+    }
+    else
+    {
+        /* nSize is ensured to be in the valid range, fall back to it
+           rather than using an undefined bis scan result. */
+        return nSize;
+    }
+#elif (defined(__GNUC__) || __has_builtin(__builtin_clz))  && defined(PHP_HAVE_BUILTIN_CLZ)
+    return 0x2 << (__builtin_clz(nSize - 1) ^ 0x1f);
+#else
+    nSize -= 1;
+    nSize |= (nSize >> 1);
+    nSize |= (nSize >> 2);
+    nSize |= (nSize >> 4);
+    nSize |= (nSize >> 8);
+    nSize |= (nSize >> 16);
+    return nSize + 1;
+#endif
+}
+
 /*
  * array
  */
@@ -94,18 +137,18 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
 {
     //Initialize zend array
     zend_ulong h, nIndex, max_index = 0;
-    ZVAL_NEW_ARR(zvalue);
     seriaArray *seriaArr = (seriaArray*) buffer;
     buffer += sizeof (seriaArray);
+    uint32_t size = cp_zend_hash_check_size(seriaArr->nNumOfElements);
+    if (!size)
+    {
+        return NULL;
+    }
+    ZVAL_NEW_ARR(zvalue);
 
     //Initialize buckets
     zend_array *ht = Z_ARR_P(zvalue);
-    if (seriaArr->nNumOfElements > seriaArr->nTableSize)
-    {
-        php_error_docref(NULL TSRMLS_CC, E_NOTICE, "invalid unserialize data");
-        return NULL;
-    }
-    ht->nTableSize = seriaArr->nTableSize;
+    ht->nTableSize = size;
     ht->nNumUsed = seriaArr->nNumOfElements;
     ht->nNumOfElements = seriaArr->nNumOfElements;
     ht->nNextFreeElement = 0;
@@ -120,6 +163,12 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue)
         //    void *arData = ecalloc(1, len);
         HT_SET_DATA_ADDR(ht, emalloc(HT_SIZE(ht)));
         ht->u.flags |= HASH_FLAG_INITIALIZED;
+        int ht_hash_size = HT_HASH_SIZE((ht)->nTableMask);
+        if (ht_hash_size <= 0)
+        {
+            php_error_docref(NULL TSRMLS_CC, E_NOTICE, "illegal unserialize data");
+            return NULL;
+        }
         HT_HASH_RESET(ht);
     }
 
@@ -263,7 +312,7 @@ static void swoole_serialize_arr(seriaString *buffer, zend_array *zvalue)
     zend_string *key;
     zend_ulong index;
     seriaArray seriaArr;
-    seriaArr.nTableSize = zvalue->nTableSize; //todo 
+    //    seriaArr.nTableSize = zvalue->nTableSize; //todo 
     seriaArr.nNumOfElements = zvalue->nNumOfElements;
     swoole_string_cpy(buffer, &seriaArr, sizeof (seriaArray));
 
@@ -862,7 +911,6 @@ PHP_MINIT_FUNCTION(swoole_serialize)
     return SUCCESS;
 }
 
-
 PHP_METHOD(swSerialize, __construct)
 {//do noting now
     return;
@@ -870,7 +918,7 @@ PHP_METHOD(swSerialize, __construct)
 
 PHP_METHOD(swSerialize, __destruct)
 {
-//do noting now
+    //do noting now
     return;
 }
 

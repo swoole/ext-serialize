@@ -84,7 +84,7 @@ typedef struct _seriaString {
 } seriaString;
 
 typedef struct _seriaArray {
-    uint32_t nTableSize;
+//    uint32_t nTableSize;
     uint32_t nNumOfElements;
     //    zend_long nNextFreeElement;
 } seriaArray;
