@@ -85,7 +85,7 @@ typedef struct _seriaString {
 
 typedef struct _seriaArray {
 //    uint32_t nTableSize;
-    uint32_t nNumOfElements;
+//    uint32_t nNumOfElements;
     //    zend_long nNextFreeElement;
 } seriaArray;
 
@@ -108,7 +108,7 @@ typedef struct _SBucketType {
     zend_uchar key_type : 1;
     zend_uchar key_len : 2;
     zend_uchar data_len : 2;
-    zend_uchar data_type : 3; //todo IS_UNDEF means object
+    zend_uchar data_type : 3; //IS_UNDEF means object now
 } SBucketType;
 
 struct _swSeriaG {
@@ -118,16 +118,19 @@ struct _swSeriaG {
 
 struct _swSeriaG swSeriaG;
 
-#define SERIA_SET_ENTRY_TYPE(buffer,type)        *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
+#define SERIA_SET_ENTRY_TYPE(buffer,type)        swoole_check_size(buffer, 1);\
+                                                 *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
                                                  buffer->offset += 1;
 
 #define SERIA_GET_ENTRY_TYPE(buffer)            *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
                                                  buffer->offset += 1;
 
-#define SERIA_SET_ENTRY_SHORT(buffer,data)        *(unsigned short*) (buffer->buffer + buffer->offset) = data;\
+#define SERIA_SET_ENTRY_SHORT(buffer,data)        swoole_check_size(buffer, 2);\
+                                                  *(unsigned short*) (buffer->buffer + buffer->offset) = data;\
                                                  buffer->offset += 2;
 
-#define SERIA_SET_ENTRY_ULONG(buffer,data)        *(zend_ulong *) (buffer->buffer + buffer->offset) = data;\
+#define SERIA_SET_ENTRY_ULONG(buffer,data)         swoole_check_size(buffer, sizeof(zend_ulong));\
+                                                  *(zend_ulong *) (buffer->buffer + buffer->offset) = data;\
                                                  buffer->offset += sizeof(zend_ulong);
 
 #define KEY_TYPE_STRING               1
