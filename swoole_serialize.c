@@ -60,7 +60,7 @@ static CPINLINE void swoole_check_size(seriaString *str, size_t len)
     //    int new_size = len + str->offset + 3 + sizeof (zend_ulong); //space 1 for the type and 2 for key string len or index len and(zend_ulong) for key h
     if (str->total < new_size)
     {//extend it
-
+        
         //double size
         new_size = ZEND_MM_ALIGNED_SIZE(new_size + new_size);
         str->buffer = erealloc2(str->buffer, new_size, str->offset);
@@ -434,7 +434,7 @@ try_again:
                 else if (Z_STRLEN_P(data) <= 0xffff)
                 {
                     ((SBucketType*) (buffer->buffer + p))->data_len = 2;
-                    SERIA_SET_ENTRY_TYPE(buffer, Z_STRLEN_P(data));
+                    SERIA_SET_ENTRY_SHORT(buffer, Z_STRLEN_P(data));
                     swoole_string_cpy(buffer, Z_STRVAL_P(data), Z_STRLEN_P(data));
                 }
                 else
@@ -740,7 +740,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zend_uc
 
     if (!ce)
     {
-        return;
+        return NULL;
     }
     buffer += name_len;
 
