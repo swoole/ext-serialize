@@ -84,8 +84,8 @@ typedef struct _seriaString {
 } seriaString;
 
 typedef struct _seriaArray {
-//    uint32_t nTableSize;
-//    uint32_t nNumOfElements;
+    //    uint32_t nTableSize;
+    //    uint32_t nNumOfElements;
     //    zend_long nNextFreeElement;
 } seriaArray;
 
@@ -116,7 +116,16 @@ struct _swSeriaG {
     zval weekup_fname;
 };
 
+typedef struct _swPoolstr {
+    zend_string *str;
+    uint32_t len_byte : 2;
+    uint32_t offset : 30;
+} swPoolstr;
+
 struct _swSeriaG swSeriaG;
+
+static void *unser_start = 0;
+static swPoolstr mini_filter[SERIA_SIZE];
 
 #define SERIA_SET_ENTRY_TYPE(buffer,type)        swoole_check_size(buffer, 1);\
                                                  *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
@@ -128,6 +137,10 @@ struct _swSeriaG swSeriaG;
 #define SERIA_SET_ENTRY_SHORT(buffer,data)        swoole_check_size(buffer, 2);\
                                                   *(unsigned short*) (buffer->buffer + buffer->offset) = data;\
                                                  buffer->offset += 2;
+
+#define SERIA_SET_ENTRY_SIZE4(buffer,data)        swoole_check_size(buffer, 4);\
+                                                  *(uint32_t*) (buffer->buffer + buffer->offset) = data;\
+                                                 buffer->offset += 4;
 
 #define SERIA_SET_ENTRY_ULONG(buffer,data)         swoole_check_size(buffer, sizeof(zend_ulong));\
                                                   *(zend_ulong *) (buffer->buffer + buffer->offset) = data;\
@@ -143,7 +156,7 @@ PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, 
 PHP_METHOD(swSerialize, __construct);
 PHP_METHOD(swSerialize, __destruct);
 
-#endif	/* PHP_SWOOLE_SERIALIZE_H */
+#endif /* PHP_SWOOLE_SERIALIZE_H */
 
 
 
