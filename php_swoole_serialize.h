@@ -83,26 +83,6 @@ typedef struct _seriaString {
     void * buffer; //zend_string
 } seriaString;
 
-typedef struct _seriaArray {
-    //    uint32_t nTableSize;
-    //    uint32_t nNumOfElements;
-    //    zend_long nNextFreeElement;
-} seriaArray;
-
-typedef struct _SBucket {
-    zend_ulong h; /* hash value (or numeric index)   */
-    zend_value value;
-} SBucket;
-
-typedef struct _SStringKey {
-    zend_ulong h;
-    char* val;
-} SStringKey;
-
-typedef struct _SStringData {
-    size_t len;
-    char val[1];
-} SStringData;
 
 typedef struct _SBucketType {
     zend_uchar key_type : 1;
@@ -114,18 +94,30 @@ typedef struct _SBucketType {
 struct _swSeriaG {
     zval sleep_fname;
     zval weekup_fname;
+    zend_uchar pack_string;
 };
 
 typedef struct _swPoolstr {
     zend_string *str;
-    uint32_t len_byte : 2;
-    uint32_t offset : 30;
+    uint32_t offset;
 } swPoolstr;
 
 struct _swSeriaG swSeriaG;
 
 static void *unser_start = 0;
 static swPoolstr mini_filter[SERIA_SIZE];
+
+#define SERIA_SET_ENTRY_TYPE_WITH_MINUS(buffer,type)        swoole_check_size(buffer, 1);\
+                                                        *(char*) (buffer->buffer + buffer->offset) = *((char*) & type);\
+                                                        buffer->offset += 1;
+
+#define SERIA_SET_ENTRY_SHORT_WITH_MINUS(buffer,data)        swoole_check_size(buffer, 2);\
+                                                            *(short*) (buffer->buffer + buffer->offset) = data;\
+                                                           buffer->offset += 2;
+
+#define SERIA_SET_ENTRY_SIZE4_WITH_MINUS(buffer,data)        swoole_check_size(buffer, 4);\
+                                                            *(int32_t*) (buffer->buffer + buffer->offset) = data;\
+                                                            buffer->offset += 4;
 
 #define SERIA_SET_ENTRY_TYPE(buffer,type)        swoole_check_size(buffer, 1);\
                                                  *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
