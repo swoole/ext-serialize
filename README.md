@@ -1,21 +1,21 @@
 ## swoole_serialize
 
-## 要求
+## require
 
 - PHP 7  (no zts)
 
-## 安装
+## install
 
 phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">>php.ini
 
 
-##技术特性:
+##features:
 
-- php7下最快的序列化/反序列化方法。
-- 支持pack和fastPack两种方法。pack方法在保证性能的同时尽量压缩序列化后大小，fastPack比pack更快，但是尺寸稍大。(参见bench.php).
-- 支持常用的__sleep __wakeup __autoload等特性。
+- the fastest serialize function for php7（see bench.php,or you can bench it use you data,trust me it is cool!）。
+- support pack and fastPack two function.
+- support __sleep __wakeup __autoload etc。
 
-## 使用
+## use
 
 $str = swSerialize::pack($arr);<br/>
 $arr = swSerialize::unpack($str);<br/>
