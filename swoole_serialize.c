@@ -226,7 +226,7 @@ static CPINLINE swPoolstr* swoole_mini_filter_find(zend_string *zstr)
             return NULL;
         }
 
-        if (str->str->h = h &&
+        if (str->str->h == h &&
                 zstr->len == str->str->len &&
                 memcmp(zstr->val, str->str->val, zstr->len) == 0)
         {
@@ -420,6 +420,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue, uint32_t nNumOfE
                 h = p->h = idx;
                 p->key = NULL;
                 max_index = p->h + 1;
+//                ht->u.flags |= HASH_FLAG_PACKED;
             }
             else
             {
@@ -871,6 +872,7 @@ static void swoole_serialize_object(seriaString *buffer, zval *obj, size_t start
     }
     seria_array_type(Z_OBJPROP_P(obj), buffer, start, buffer->offset);
     swoole_serialize_arr(buffer, Z_OBJPROP_P(obj));
+//    printf("hash2 %u\n",ce->properties_info.arData[0].key->h);
 }
 
 /*
