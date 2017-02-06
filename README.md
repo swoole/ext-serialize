@@ -2,7 +2,7 @@
 
 ## require
 
-- PHP 7  (no zts)
+- PHP 7+
 
 ## install
 
