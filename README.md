@@ -17,6 +17,15 @@ phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">>php.
 
 ## use
 
+$str = swoole_pack($arr);<br/>
+$arr = swoole_unpack($str);<br/>
+<br/>
+
+$str = swoole_fast_pack($arr);<br/>
+$arr = swoole_unpack($str);<br/>
+
+or
+
 $str = swSerialize::pack($arr);<br/>
 $arr = swSerialize::unpack($str);<br/>
 <br/>
