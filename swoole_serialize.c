@@ -199,7 +199,7 @@ static CPINLINE void swoole_mini_filter_add(zend_string *zstr, size_t offset, ze
             return;
         }
         // do not extend it ,cause the hash full prove the data concentration is not high,in this situation pack string is low effective
-        uint16_t mod = zstr->h & SERIA_SIZE - 1;
+        uint16_t mod = zstr->h & (SERIA_SIZE - 1);
 
         mini_filter[mod].offset = offset << 3;
         if (offset <= 0x1fff)
@@ -220,7 +220,7 @@ static CPINLINE swPoolstr* swoole_mini_filter_find(zend_string *zstr)
     if (swSeriaG.pack_string)
     {
         zend_ulong h = zend_string_hash_val(zstr);
-        swPoolstr* str = &mini_filter[h & SERIA_SIZE - 1];
+        swPoolstr* str = &mini_filter[h & (SERIA_SIZE - 1)];
         if (!str->str)
         {
             return NULL;
@@ -546,7 +546,7 @@ static void swoole_serialize_arr(seriaString *buffer, zend_array *zvalue)
             if (key)
             {
                 type.key_type = KEY_TYPE_STRING;
-                if (swStr = swoole_mini_filter_find(key))
+                if ((swStr = swoole_mini_filter_find(key)))
                 {
                     type.key_len = 3; //means use same string
                     SERIA_SET_ENTRY_TYPE(buffer, type);
@@ -616,7 +616,7 @@ try_again:
         {
             case IS_STRING:
             {
-                if (swStr = swoole_mini_filter_find(Z_STR_P(data)))
+                if ((swStr = swoole_mini_filter_find(Z_STR_P(data))))
                 {
                     ((SBucketType*) (buffer->buffer + p))->data_len = 3; //means use same string
                     if (swStr->offset & 4)
