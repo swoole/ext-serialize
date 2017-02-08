@@ -892,8 +892,9 @@ static CPINLINE zend_string * swoole_string_init(const char *str, size_t len)
  */
 static CPINLINE void swoole_string_release(zend_string *str)
 {
-    ALLOCA_FLAG(use_heap);
-    ZSTR_ALLOCA_FREE(str, use_heap);
+    //if dont support alloc 0 will ignore
+    //if support alloc size is definitely < ZEND_ALLOCA_MAX_SIZE
+    ZSTR_ALLOCA_FREE(str, 0);
 }
 
 static CPINLINE zend_class_entry* swoole_try_get_ce(zend_string *class_name)
@@ -1299,7 +1300,7 @@ const zend_function_entry swoole_serialize_functions[] = {
     ZEND_FALIAS(swoole_pack, swoole_serialize, NULL)
     ZEND_FALIAS(swoole_unpack, swoole_unserialize, NULL)
     ZEND_FALIAS(swoole_fast_pack, swoole_fast_serialize, NULL)
-            
+
     PHP_FE_END /* Must be the last line in swoole_serialize_functions[] */
 };
 /* }}} */
