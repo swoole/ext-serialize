@@ -25,6 +25,7 @@
 #include "php.h"
 #include "php_ini.h"
 #include "ext/standard/info.h"
+#include "zend_exceptions.h"
 #include "php_swoole_serialize.h"
 
 static int le_swoole_serialize;
@@ -971,6 +972,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zend_uc
         }
         else
         {
+            (void)index;
             zend_hash_next_index_insert(Z_OBJPROP_P(return_value), data);
         }
     }
@@ -1149,6 +1151,10 @@ PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, 
 //swoole_string_release(fname);
 //}
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_serialize, 0, 0, 1)
+       ZEND_ARG_INFO(0, value)
+ZEND_END_ARG_INFO()
+
 PHP_FUNCTION(swoole_fast_serialize)
 {
 
@@ -1177,6 +1183,11 @@ PHP_FUNCTION(swoole_serialize)
     RETURN_STR(z_str);
 }
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_unserialize, 0, 0, 1)
+       ZEND_ARG_INFO(0, buffer)
+       ZEND_ARG_INFO(0, args)
+ZEND_END_ARG_INFO()
+
 PHP_FUNCTION(swoole_unserialize)
 {
     char *buffer = NULL;
@@ -1193,13 +1204,16 @@ PHP_FUNCTION(swoole_unserialize)
 
 }
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_void, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 
 const zend_function_entry swSerialize_methods[] = {
-    ZEND_FENTRY(pack, ZEND_FN(swoole_serialize), NULL, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-    ZEND_FENTRY(fastPack, ZEND_FN(swoole_fast_serialize), NULL, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-    ZEND_FENTRY(unpack, ZEND_FN(swoole_unserialize), NULL, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-    PHP_ME(swSerialize, __construct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
-    PHP_ME(swSerialize, __destruct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_DTOR)
+    ZEND_FENTRY(pack, ZEND_FN(swoole_serialize), arginfo_swoole_serialize, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    ZEND_FENTRY(fastPack, ZEND_FN(swoole_fast_serialize), arginfo_swoole_serialize, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    ZEND_FENTRY(unpack, ZEND_FN(swoole_unserialize), arginfo_swoole_unserialize, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    PHP_ME(swSerialize, __construct, arginfo_swoole_void, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
+    PHP_ME(swSerialize, __destruct, arginfo_swoole_void, ZEND_ACC_PUBLIC | ZEND_ACC_DTOR)
     PHP_FE_END
 };
 
@@ -1278,6 +1292,7 @@ PHP_MINFO_FUNCTION(swoole_serialize)
 {
     php_info_print_table_start();
     php_info_print_table_header(2, "swoole_serialize support", "enabled");
+    php_info_print_table_row(2, "swoole_serialize version", PHP_SWOOLE_SERIALIZE_VERSION);
     php_info_print_table_row(2, "Author", "xinhua.guo");
     php_info_print_table_row(2, "email", "woshiguo35@sina.com");
     php_info_print_table_end();
@@ -1293,13 +1308,13 @@ PHP_MINFO_FUNCTION(swoole_serialize)
  * Every user visible function must have an entry in swoole_serialize_functions[].
  */
 const zend_function_entry swoole_serialize_functions[] = {
-    PHP_FE(swoole_serialize, NULL)
-    PHP_FE(swoole_fast_serialize, NULL)
-    PHP_FE(swoole_unserialize, NULL)
+    PHP_FE(swoole_serialize, arginfo_swoole_serialize)
+    PHP_FE(swoole_fast_serialize, arginfo_swoole_serialize)
+    PHP_FE(swoole_unserialize, arginfo_swoole_unserialize)
 
-    ZEND_FALIAS(swoole_pack, swoole_serialize, NULL)
-    ZEND_FALIAS(swoole_unpack, swoole_unserialize, NULL)
-    ZEND_FALIAS(swoole_fast_pack, swoole_fast_serialize, NULL)
+    ZEND_FALIAS(swoole_pack, swoole_serialize, arginfo_swoole_serialize)
+    ZEND_FALIAS(swoole_unpack, swoole_unserialize, arginfo_swoole_unserialize)
+    ZEND_FALIAS(swoole_fast_pack, swoole_fast_serialize, arginfo_swoole_serialize)
 
     PHP_FE_END /* Must be the last line in swoole_serialize_functions[] */
 };
