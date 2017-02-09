@@ -25,6 +25,7 @@
 #include "php.h"
 #include "php_ini.h"
 #include "ext/standard/info.h"
+#include "zend_exceptions.h"
 #include "php_swoole_serialize.h"
 
 static int le_swoole_serialize;
@@ -971,6 +972,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zend_uc
         }
         else
         {
+            (void)index;
             zend_hash_next_index_insert(Z_OBJPROP_P(return_value), data);
         }
     }
