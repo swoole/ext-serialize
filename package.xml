@@ -3,7 +3,7 @@
 http://pear.php.net/dtd/tasks-1.0.xsd
 http://pear.php.net/dtd/package-2.0
 http://pear.php.net/dtd/package-2.0.xsd">
-<name>php-cp</name>
+<name>swoole_serialize</name>
   <channel>pecl.php.net</channel>
   <summary>the fastest and smallest serialize fucntion bound for php7</summary>
   <description>
@@ -15,7 +15,7 @@ http://pear.php.net/dtd/package-2.0.xsd">
     <email>woshiguo35@hotmail.com</email>
     <active>yes</active>
   </lead>
-  <date>2017-2-3</date>
+  <date>2017-02-09</date>
   <version>
     <release>0.1.1</release>
     <api>0.1.1</api>
