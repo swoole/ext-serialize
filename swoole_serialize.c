@@ -1280,6 +1280,7 @@ PHP_MINFO_FUNCTION(swoole_serialize)
 {
     php_info_print_table_start();
     php_info_print_table_header(2, "swoole_serialize support", "enabled");
+    php_info_print_table_row(2, "swoole_serialize version", PHP_SWOOLE_SERIALIZE_VERSION);
     php_info_print_table_row(2, "Author", "xinhua.guo");
     php_info_print_table_row(2, "email", "woshiguo35@sina.com");
     php_info_print_table_end();
