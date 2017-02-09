@@ -5,6 +5,9 @@
 - PHP 7+
 
 ## install
+pecl install swoole_serialize <br/>
+
+or
 
 phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">>php.ini
 
