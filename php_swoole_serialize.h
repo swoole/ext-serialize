@@ -62,6 +62,7 @@ ZEND_TSRMLS_CACHE_EXTERN()
 
 
 #define SERIA_SIZE    1024
+#define FILTER_SIZE   1024
 
 #if defined(__GNUC__)
 #if __GNUC__ >= 3
@@ -77,35 +78,51 @@ ZEND_TSRMLS_CACHE_EXTERN()
 
 
 
-typedef struct _seriaString {
+typedef struct _seriaString
+{
     size_t offset;
     size_t total;
     void * buffer; //zend_string
 } seriaString;
 
-
-typedef struct _SBucketType {
+typedef struct _SBucketType
+{
     zend_uchar key_type : 1;
     zend_uchar key_len : 2;
     zend_uchar data_len : 2;
     zend_uchar data_type : 3; //IS_UNDEF means object now
 } SBucketType;
 
-struct _swSeriaG {
+struct _swMinFilter
+{
+    uint32_t mini_fillter_find_cnt;
+    uint32_t mini_fillter_miss_cnt;
+    uint32_t bigger_fillter_size;
+};
+
+struct _swSeriaG
+{
     zval sleep_fname;
     zval weekup_fname;
     zend_uchar pack_string;
+    struct _swMinFilter filter;
 };
 
-typedef struct _swPoolstr {
+#pragma pack (4)
+
+typedef struct _swPoolstr
+{
     zend_string *str;
     uint32_t offset;
 } swPoolstr;
 
-struct _swSeriaG swSeriaG;
+#pragma pack ()
+
+struct _swSeriaG swSeriaG = {0};
 
 static void *unser_start = 0;
-static swPoolstr mini_filter[SERIA_SIZE];
+static swPoolstr mini_filter[FILTER_SIZE] = {0};
+static swPoolstr *bigger_filter = NULL;
 
 #define SERIA_SET_ENTRY_TYPE_WITH_MINUS(buffer,type)        swoole_check_size(buffer, 1);\
                                                         *(char*) (buffer->buffer + buffer->offset) = *((char*) & type);\
