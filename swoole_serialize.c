@@ -192,16 +192,20 @@ static CPINLINE void swoole_mini_filter_clear()
         {
             efree(bigger_filter);
             bigger_filter = NULL;
+
         }
+        memset(&swSeriaG.filter, 0, sizeof (struct _swMinFilter));
     }
 }
 
 static CPINLINE void swoole_make_bigger_filter_size()
 {
     if (FILTER_SIZE <= swSeriaG.filter.mini_fillter_miss_cnt &&
-            (swSeriaG.filter.mini_fillter_miss_cnt / swSeriaG.filter.mini_fillter_find_cnt) > 0.5)
+            swSeriaG.filter.mini_fillter_find_cnt < swSeriaG.filter.mini_fillter_miss_cnt)
+        //        if (FILTER_SIZE <= swSeriaG.filter.mini_fillter_miss_cnt &&
+        //                (swSeriaG.filter.mini_fillter_find_cnt / swSeriaG.filter.mini_fillter_miss_cnt) < 1)
     {
-        swSeriaG.filter.bigger_fillter_size = swSeriaG.filter.mini_fillter_miss_cnt * 256;
+        swSeriaG.filter.bigger_fillter_size = swSeriaG.filter.mini_fillter_miss_cnt * 128;
         bigger_filter = (swPoolstr*) ecalloc(1, sizeof (swPoolstr) * swSeriaG.filter.bigger_fillter_size);
         memcpy(bigger_filter, &mini_filter, sizeof (mini_filter));
     }
@@ -581,8 +585,7 @@ static void swoole_serialize_arr(seriaString *buffer, zend_array *zvalue)
         type.data_type = Z_TYPE_P(data);
         //start point
         size_t p = buffer->offset;
-
-        if (is_pack)
+        if (is_pack && zvalue->nNextFreeElement == zvalue->nNumOfElements)
         {
             type.key_type = KEY_TYPE_INDEX;
             type.key_len = 0;
