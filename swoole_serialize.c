@@ -1276,6 +1276,8 @@ PHP_MINIT_FUNCTION(swoole_serialize)
 
     ZVAL_STRING(&swSeriaG.sleep_fname, "__sleep");
     ZVAL_STRING(&swSeriaG.weekup_fname, "__weekup");
+    memset(&swSeriaG.filter, 0, sizeof (swSeriaG.filter));
+    memset(&mini_filter, 0, sizeof (mini_filter));
 
     zend_class_entry swoole_serialize_ce;
     INIT_CLASS_ENTRY(swoole_serialize_ce, "swSerialize", swSerialize_methods);

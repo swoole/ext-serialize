@@ -118,10 +118,10 @@ typedef struct _swPoolstr
 
 #pragma pack ()
 
-struct _swSeriaG swSeriaG = {0};
+struct _swSeriaG swSeriaG;
 
 static void *unser_start = 0;
-static swPoolstr mini_filter[FILTER_SIZE] = {0};
+static swPoolstr mini_filter[FILTER_SIZE];
 static swPoolstr *bigger_filter = NULL;
 
 #define SERIA_SET_ENTRY_TYPE_WITH_MINUS(buffer,type)        swoole_check_size(buffer, 1);\
