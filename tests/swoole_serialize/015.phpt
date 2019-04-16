@@ -2,18 +2,12 @@
 Check for serialization handler
 --SKIPIF--
 <?php
-if (version_compare(PHP_VERSION, '5.2.0') < 0) {
-    echo "skip tests in PHP 5.2 or newer";
-}
-
 if (!extension_loaded("session")) {
    echo "skip needs session enabled";
 }
+?>
 --FILE--
 <?php
-if(!extension_loaded('swoole_serialize')) {
-    dl('swoole_serialize.' . PHP_SHLIB_SUFFIX);
-}
 
 $output = '';
 

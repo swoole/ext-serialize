@@ -1,22 +1,20 @@
 --TEST--
-Object test, __sleep
+swoole_serialize: Object test, __sleep
 --SKIPIF--
 <?php
-if (version_compare(PHP_VERSION, '5.2.0') < 0) {
-    echo "skip tests in PHP 5.2 or newer";
-}
+require __DIR__ . '/../include/skipif.inc';
+skip_if_class_not_exist('swoole_serialize');
+?>
 --FILE--
 <?php
-if(!extension_loaded('swoole_serialize')) {
-    dl('swoole_serialize.' . PHP_SHLIB_SUFFIX);
-}
+require __DIR__ . '/../include/bootstrap.php';
 
 function test($type, $variable, $test) {
-    $serialized = swoole_serialize($variable);
-    $unserialized = swoole_unserialize($serialized);
+    $serialized = swoole_serialize::pack($variable);
+    $unserialized = swoole_serialize::unpack($serialized);
 
     echo $type, PHP_EOL;
-     
+
     var_dump($unserialized);
     echo $test || $unserialized == $variable ? 'OK' : 'ERROR', PHP_EOL;
 }
@@ -44,7 +42,6 @@ class Obj {
 }
 
 $o = new Obj(1, 2, 3, 4);
-
 
 test('object', $o, true);
 ?>

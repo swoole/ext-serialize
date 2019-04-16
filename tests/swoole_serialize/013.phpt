@@ -1,18 +1,20 @@
 --TEST--
-Object-Reference test
+swoole_serialize: Object-Array test
 --SKIPIF--
+<?php
+require __DIR__ . '/../include/skipif.inc';
+skip_if_class_not_exist('swoole_serialize');
+?>
 --FILE--
 <?php
-if(!extension_loaded('swoole_serialize')) {
-    dl('swoole_serialize.' . PHP_SHLIB_SUFFIX);
-}
+require __DIR__ . '/../include/bootstrap.php';
 
 function test($type, $variable, $test) {
-    $serialized = swoole_serialize($variable);
-    $unserialized = swoole_unserialize($serialized);
+    $serialized = swoole_serialize::pack($variable);
+    $unserialized = swoole_serialize::unpack($serialized);
 
     echo $type, PHP_EOL;
-     
+
     var_dump($unserialized);
     echo $test || $unserialized == $variable ? 'OK' : 'ERROR', PHP_EOL;
 }
@@ -27,10 +29,9 @@ class Obj {
     }
 }
 
-$o = new Obj(1, 2);
-$a = array(&$o, &$o);
+$o = array(new Obj(1, 2), new Obj(3, 4));
 
-test('object', $a, false);
+test('object', $o, false);
 ?>
 --EXPECTF--
 object
@@ -45,9 +46,9 @@ array(2) {
   [1]=>
   object(Obj)#%d (2) {
     ["a"]=>
-    int(1)
+    int(3)
     ["b"]=>
-    int(2)
+    int(4)
   }
 }
 OK
