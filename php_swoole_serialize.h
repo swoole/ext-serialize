@@ -38,10 +38,25 @@ extern zend_module_entry swoole_serialize_module_entry;
 #include "TSRM.h"
 #endif
 
+#if PHP_VERSION_ID > 70400
+#error "require PHP version 7.0 - 7.3"
+#endif
+
+//---------------------------------------------------------
+//                  serialize
+//---------------------------------------------------------
+PHP_FUNCTION(swoole_serialize);
+PHP_FUNCTION(swoole_fast_serialize);
+PHP_FUNCTION(swoole_unserialize);
+
+void swoole_serialize_init(int module_number);
+
+PHPAPI zend_string* php_swoole_serialize(zval *zvalue);
+PHPAPI int php_swoole_unserialize(void *buffer, size_t len, zval *return_value, zval *zobject_args, long flag);
+
 /*
         Declare any global variables you may need between the BEGIN
         and END macros here:
-
 ZEND_BEGIN_MODULE_GLOBALS(swoole_serialize)
         zend_long  global_value;
         char *global_string;
@@ -55,14 +70,9 @@ ZEND_END_MODULE_GLOBALS(swoole_serialize)
 #define SWOOLE_SERIALIZE_G(v) ZEND_MODULE_GLOBALS_ACCESSOR(swoole_serialize, v)
 
 #if defined(ZTS) && defined(COMPILE_DL_SWOOLE_SERIALIZE)
-
 ZEND_TSRMLS_CACHE_EXTERN()
 #endif
 
-
-
-#define SERIA_SIZE    1024
-#define FILTER_SIZE   1024
 
 #if defined(__GNUC__)
 #if __GNUC__ >= 3
@@ -76,94 +86,6 @@ ZEND_TSRMLS_CACHE_EXTERN()
 #define CPINLINE inline
 #endif
 
-
-
-typedef struct _seriaString
-{
-    size_t offset;
-    size_t total;
-    void * buffer; //zend_string
-} seriaString;
-
-typedef struct _SBucketType
-{
-    zend_uchar key_type : 1;
-    zend_uchar key_len : 2;
-    zend_uchar data_len : 2;
-    zend_uchar data_type : 3; //IS_UNDEF means object now
-} SBucketType;
-
-struct _swMinFilter
-{
-    uint32_t mini_fillter_find_cnt;
-    uint32_t mini_fillter_miss_cnt;
-    uint32_t bigger_fillter_size;
-};
-
-struct _swSeriaG
-{
-    zval sleep_fname;
-    zval weekup_fname;
-    zend_uchar pack_string;
-    struct _swMinFilter filter;
-};
-
-#pragma pack (4)
-
-typedef struct _swPoolstr
-{
-    zend_string *str;
-    uint32_t offset;
-} swPoolstr;
-
-#pragma pack ()
-
-struct _swSeriaG swSeriaG;
-
-static void *unser_start = 0;
-static swPoolstr mini_filter[FILTER_SIZE];
-static swPoolstr *bigger_filter = NULL;
-
-#define SERIA_SET_ENTRY_TYPE_WITH_MINUS(buffer,type)        swoole_check_size(buffer, 1);\
-                                                        *(char*) (buffer->buffer + buffer->offset) = *((char*) & type);\
-                                                        buffer->offset += 1;
-
-#define SERIA_SET_ENTRY_SHORT_WITH_MINUS(buffer,data)        swoole_check_size(buffer, 2);\
-                                                            *(short*) (buffer->buffer + buffer->offset) = data;\
-                                                           buffer->offset += 2;
-
-#define SERIA_SET_ENTRY_SIZE4_WITH_MINUS(buffer,data)        swoole_check_size(buffer, 4);\
-                                                            *(int32_t*) (buffer->buffer + buffer->offset) = data;\
-                                                            buffer->offset += 4;
-
-#define SERIA_SET_ENTRY_TYPE(buffer,type)        swoole_check_size(buffer, 1);\
-                                                 *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
-                                                 buffer->offset += 1;
-
-#define SERIA_GET_ENTRY_TYPE(buffer)            *(zend_uchar*) (buffer->buffer + buffer->offset) = *((zend_uchar*) & type);\
-                                                 buffer->offset += 1;
-
-#define SERIA_SET_ENTRY_SHORT(buffer,data)        swoole_check_size(buffer, 2);\
-                                                  *(unsigned short*) (buffer->buffer + buffer->offset) = data;\
-                                                 buffer->offset += 2;
-
-#define SERIA_SET_ENTRY_SIZE4(buffer,data)        swoole_check_size(buffer, 4);\
-                                                  *(uint32_t*) (buffer->buffer + buffer->offset) = data;\
-                                                 buffer->offset += 4;
-
-#define SERIA_SET_ENTRY_ULONG(buffer,data)         swoole_check_size(buffer, sizeof(zend_ulong));\
-                                                  *(zend_ulong *) (buffer->buffer + buffer->offset) = data;\
-                                                 buffer->offset += sizeof(zend_ulong);
-
-#define KEY_TYPE_STRING               1
-#define KEY_TYPE_INDEX                0
-
-
-PHP_SWOOLE_SERIALIZE_API zend_string* php_swoole_serialize(zval *val);
-PHP_SWOOLE_SERIALIZE_API void php_swoole_unserialize(void * buffer, size_t len, zval *return_value, zval *object_args);
-
-PHP_METHOD(swSerialize, __construct);
-PHP_METHOD(swSerialize, __destruct);
 
 #endif /* PHP_SWOOLE_SERIALIZE_H */
 
