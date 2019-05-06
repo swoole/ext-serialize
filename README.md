@@ -1,52 +1,68 @@
 ## swoole_serialize
 
+## tips
+
+It's expensive to maintain for the serialize module,because  the PHP kernel changes frequently , we give up supporting for PHP7.3 and above.
+
 ## require
 
 - PHP 7+
 
 ## install
-pecl install swoole_serialize <br/>
+
+```bash
+pecl install swoole_serialize 
+```
 
 or
 
-phpize=>./configure=>make install=>echo "extension=xx/swoole_serialize.so">>php.ini
+```bash
+phpize
+./configure
+make
+make install
+echo "extension=/path/to/swoole_serialize.so" >> php.ini
+```
 
+## features
 
-##features:
-
-- the fastest serialize function for php7（see bench.php,or you can bench it use you data,trust me it is cool!）。
+- the fastest serialize function for php7 (see bench.php,or you can bench it use you data,trust me it is cool!).
 - support pack and fastPack two function.
-- support __sleep __wakeup __autoload etc。
+- support __sleep __wakeup __autoload etc.
 
 ## use
+```php
+$str = swoole_pack($arr);
+$arr = swoole_unpack($str);
 
-$str = swoole_pack($arr);<br/>
-$arr = swoole_unpack($str);<br/>
-<br/>
 
-$str = swoole_fast_pack($arr);<br/>
-$arr = swoole_unpack($str);<br/>
-
-or
-
-$str = swSerialize::pack($arr);<br/>
-$arr = swSerialize::unpack($str);<br/>
-<br/>
-
-$str = swSerialize::fastPack($arr);<br/>
-$arr = swSerialize::unpack($str);<br/>
+$str = swoole_fast_pack($arr);
+$arr = swoole_unpack($str);
+```
 
 or
 
-$o = new swSerialize();<br/>
-$str = $o->pack($arr);<br/>
-$o->unpack($str);<br/>
+```php
+$str = swSerialize::pack($arr);
+$arr = swSerialize::unpack($str);
 
-<br/>
 
-$o = new swSerialize();<br/>
-$str = $o->fastPack($arr);<br/>
-$o->unpack($str);<br/>
+$str = swSerialize::fastPack($arr);
+$arr = swSerialize::unpack($str);
+```
+
+or
+
+```php
+$o = new swSerialize();
+$str = $o->pack($arr);
+$o->unpack($str);
+
+
+$o = new swSerialize();
+$str = $o->fastPack($arr);
+$o->unpack($str);
+```
 
 
 ## contact us
@@ -55,3 +71,5 @@ $o->unpack($str);<br/>
 ## License
 
 Apache License Version 2.0 see http://www.apache.org/licenses/LICENSE-2.0.html
+
+
