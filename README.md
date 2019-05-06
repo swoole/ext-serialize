@@ -2,7 +2,7 @@
 
 ## tips
 
-It's expensive to maintain for the serialize module,because  the PHP kernel changes frequently , we give up supporting for PHP7.3 and above.
+the PHP kernel changes frequently which lead that the serialize module is too expensive to maintain, so temporarily give up support for more than PHP7.3.
 
 ## require
 
