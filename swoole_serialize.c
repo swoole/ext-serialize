@@ -121,7 +121,7 @@ void swoole_serialize_init(int module_number)
     SW_INIT_CLASS_ENTRY(swoole_serialize, "Swoole\\Serialize", "swoole_serialize", NULL, swoole_serialize_methods);
     SW_SET_CLASS_SERIALIZABLE(swoole_serialize, zend_class_serialize_deny, zend_class_unserialize_deny);
     SW_SET_CLASS_CLONEABLE(swoole_serialize, zend_class_clone_deny);
-    SW_SET_CLASS_UNSET_PROPERTY_HANDLER(swoole_serialize, zend_class_unset_property_deny);
+    SW_SET_CLASS_UNSET_PROPERTY_HANDLER(swoole_serialize, sw_zend_class_unset_property_deny);
 
     //    ZVAL_STRING(&swSeriaG.sleep_fname, "__sleep");
     zend_string *zstr_sleep = zend_string_init("__sleep", sizeof ("__sleep") - 1, 1);
