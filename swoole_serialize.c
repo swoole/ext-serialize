@@ -14,7 +14,6 @@
   +----------------------------------------------------------------------+
  */
 
-#include "php_swoole.h"
 #include "php_swoole_serialize.h"
 
 #include "swoole_serialize.h"

@@ -12,7 +12,7 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:   woshiguo35@sina.com                                          |
+  | Author:   woshiguo35@sina.com                                        |
   +----------------------------------------------------------------------+
  */
 
@@ -20,6 +20,13 @@
 
 #ifndef PHP_SWOOLE_SERIALIZE_H
 #define PHP_SWOOLE_SERIALIZE_H
+
+#include "ext/swoole/config.h"
+#include "php_swoole.h"
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 extern zend_module_entry swoole_serialize_module_entry;
 #define phpext_swoole_serialize_ptr &swoole_serialize_module_entry
