@@ -147,7 +147,7 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar 
     str->buffer = ecalloc(1, total);
     if (!str->buffer)
     {
-        swoole_php_sys_error(E_ERROR, "malloc failed");
+        php_swoole_sys_error(E_ERROR, "malloc failed");
     }
 
     SBucketType real_type = {0};
@@ -168,7 +168,7 @@ static CPINLINE void swoole_check_size(seriaString *str, size_t len)
         str->buffer = erealloc2(str->buffer, new_size, str->offset);
         if (!str->buffer)
         {
-            swoole_php_sys_error(E_ERROR, "erealloc2 failed");
+            php_swoole_sys_error(E_ERROR, "erealloc2 failed");
         }
         str->total = new_size;
     }
@@ -1624,7 +1624,7 @@ static PHP_METHOD(swoole_serialize, pack)
     zval *zvalue;
     size_t is_fast = 0;
 
-    swoole_php_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
+    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "z|l", &zvalue, &is_fast) == FAILURE)
     {
@@ -1643,7 +1643,7 @@ static PHP_METHOD(swoole_serialize, unpack)
     zend_long flag = 0;
     zval *args = NULL; //for object
 
-    swoole_php_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
+    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "s|la", &buffer, &buffer_len, &flag, &args) == FAILURE)
     {
