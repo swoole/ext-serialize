@@ -11,12 +11,6 @@ the PHP kernel changes frequently which lead that the serialize module is
 ## install
 
 ```bash
-pecl install swoole_serialize 
-```
-
-or
-
-```bash
 phpize
 ./configure
 make
