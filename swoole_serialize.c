@@ -45,7 +45,7 @@ PHP_MINFO_FUNCTION(swoole_serialize);
 /* {{{ swoole_serialize_deps
  */
 static const zend_module_dep swoole_serialize_deps[] = {
-    ZEND_MOD_REQUIRED("swoole")
+//    ZEND_MOD_REQUIRED("swoole")
     ZEND_MOD_END
 };
 /* }}} */
@@ -61,7 +61,7 @@ zend_module_entry swoole_serialize_module_entry =
     NULL,
     NULL,
     PHP_MINFO(swoole_serialize),
-    PHP_SWOOLE_VERSION,
+    PHP_SWOOLE_SERIALIZE_VERSION,
     STANDARD_MODULE_PROPERTIES
 };
 
@@ -105,7 +105,8 @@ static const zend_function_entry swoole_serialize_methods[] = {
     PHP_FE_END
 };
 
-zend_class_entry *swoole_serialize_ce;
+zend_class_entry swoole_serialize_ce;
+zend_class_entry* swoole_serialize_ce_ptr;
 static zend_object_handlers swoole_serialize_handlers;
 
 #define SWOOLE_SERI_EOF "EOF"
@@ -117,10 +118,17 @@ void *unseri_buffer_end = NULL;
 
 void swoole_serialize_init(int module_number)
 {
-    SW_INIT_CLASS_ENTRY(swoole_serialize, "Swoole\\Serialize", "swoole_serialize", NULL, swoole_serialize_methods);
-    SW_SET_CLASS_SERIALIZABLE(swoole_serialize, zend_class_serialize_deny, zend_class_unserialize_deny);
-    SW_SET_CLASS_CLONEABLE(swoole_serialize, sw_zend_class_clone_deny);
-    SW_SET_CLASS_UNSET_PROPERTY_HANDLER(swoole_serialize, sw_zend_class_unset_property_deny);
+    INIT_CLASS_ENTRY(swoole_serialize_ce, "Swoole\\Serialize", swoole_serialize_methods);
+    swoole_serialize_ce_ptr = zend_register_internal_class(&swoole_serialize_ce TSRMLS_CC);
+    zend_register_class_alias("swoole_serialize", swoole_serialize_ce_ptr);
+
+    //disable serilize/unserialize
+    swoole_serialize_ce.serialize = zend_class_serialize_deny;
+    swoole_serialize_ce.unserialize = zend_class_unserialize_deny;
+    
+    //disable clone
+    swoole_serialize_ce.clone = NULL;
+    
 
     //    ZVAL_STRING(&swSeriaG.sleep_fname, "__sleep");
     zend_string *zstr_sleep = zend_string_init("__sleep", sizeof ("__sleep") - 1, 1);
@@ -132,9 +140,8 @@ void swoole_serialize_init(int module_number)
     memset(&swSeriaG.filter, 0, sizeof (swSeriaG.filter));
     memset(&mini_filter, 0, sizeof (mini_filter));
 
-    SW_REGISTER_LONG_CONSTANT("SWOOLE_FAST_PACK", SW_FAST_PACK);
-    SW_REGISTER_LONG_CONSTANT("UNSERIALIZE_OBJECT_TO_ARRAY", UNSERIALIZE_OBJECT_TO_ARRAY);
-    SW_REGISTER_LONG_CONSTANT("UNSERIALIZE_OBJECT_TO_STDCLASS", UNSERIALIZE_OBJECT_TO_STDCLASS);
+    REGISTER_BOOL_CONSTANT("UNSERIALIZE_OBJECT_TO_ARRAY", UNSERIALIZE_OBJECT_TO_ARRAY, CONST_CS | CONST_PERSISTENT);
+    REGISTER_BOOL_CONSTANT("UNSERIALIZE_OBJECT_TO_STDCLASS", UNSERIALIZE_OBJECT_TO_STDCLASS, CONST_CS | CONST_PERSISTENT);
 }
 
 static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar type)
@@ -1624,7 +1631,7 @@ static PHP_METHOD(swoole_serialize, pack)
     zval *zvalue;
     size_t is_fast = 0;
 
-    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
+//    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "z|l", &zvalue, &is_fast) == FAILURE)
     {
@@ -1643,7 +1650,7 @@ static PHP_METHOD(swoole_serialize, unpack)
     zend_long flag = 0;
     zval *args = NULL; //for object
 
-    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
+//    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "s|la", &buffer, &buffer_len, &flag, &args) == FAILURE)
     {

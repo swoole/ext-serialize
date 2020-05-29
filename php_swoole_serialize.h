@@ -20,18 +20,23 @@
 
 #ifndef PHP_SWOOLE_SERIALIZE_H
 #define PHP_SWOOLE_SERIALIZE_H
+//
+//#include "ext/swoole/config.h"
+//#include "php_swoole.h"
 
-#include "ext/swoole/config.h"
-#include "php_swoole.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
+#include "php.h"
+#include "php_ini.h"
+#include "zend_interfaces.h"
+
 extern zend_module_entry swoole_serialize_module_entry;
 #define phpext_swoole_serialize_ptr &swoole_serialize_module_entry
 
-#define PHP_SWOOLE_SERIALIZE_VERSION "0.1.1"
+#define PHP_SWOOLE_SERIALIZE_VERSION "1.0z"
 
 #ifdef PHP_WIN32
 #define PHP_SWOOLE_SERIALIZE_API __declspec(dllexport)
