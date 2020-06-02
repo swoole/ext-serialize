@@ -22,13 +22,13 @@
 #endif
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_serialize_pack, 0, 0, 1)
-    ZEND_ARG_INFO(0, data)
-    ZEND_ARG_INFO(0, flag)
+ZEND_ARG_INFO(0, data)
+ZEND_ARG_INFO(0, flag)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_serialize_unpack, 0, 0, 1)
-    ZEND_ARG_INFO(0, string)
-    ZEND_ARG_INFO(0, flag)
+ZEND_ARG_INFO(0, string)
+ZEND_ARG_INFO(0, flag)
 ZEND_END_ARG_INFO()
 
 static void swoole_serialize_object(seriaString *buffer, zval *zvalue, size_t start);
@@ -45,13 +45,12 @@ PHP_MINFO_FUNCTION(swoole_serialize);
 /* {{{ swoole_serialize_deps
  */
 static const zend_module_dep swoole_serialize_deps[] = {
-//    ZEND_MOD_REQUIRED("swoole")
+    //    ZEND_MOD_REQUIRED("swoole")
     ZEND_MOD_END
 };
 /* }}} */
 
-zend_module_entry swoole_serialize_module_entry =
-{
+zend_module_entry swoole_serialize_module_entry ={
     STANDARD_MODULE_HEADER_EX, NULL,
     swoole_serialize_deps,
     "swoole_serialize",
@@ -66,6 +65,7 @@ zend_module_entry swoole_serialize_module_entry =
 };
 
 #ifdef COMPILE_DL_SWOOLE_SERIALIZE
+
 ZEND_GET_MODULE(swoole_serialize)
 #endif
 
@@ -73,8 +73,8 @@ ZEND_GET_MODULE(swoole_serialize)
  */
 PHP_MINIT_FUNCTION(swoole_serialize)
 {
-//    ZEND_INIT_MODULE_GLOBALS(swoole, php_swoole_serialize_init_globals, NULL);
-//    REGISTER_INI_ENTRIES();
+    //    ZEND_INIT_MODULE_GLOBALS(swoole, php_swoole_serialize_init_globals, NULL);
+    //    REGISTER_INI_ENTRIES();
 
     swoole_serialize_init(module_number);
 
@@ -125,10 +125,10 @@ void swoole_serialize_init(int module_number)
     //disable serilize/unserialize
     swoole_serialize_ce.serialize = zend_class_serialize_deny;
     swoole_serialize_ce.unserialize = zend_class_unserialize_deny;
-    
+
     //disable clone
     swoole_serialize_ce.clone = NULL;
-    
+
 
     //    ZVAL_STRING(&swSeriaG.sleep_fname, "__sleep");
     zend_string *zstr_sleep = zend_string_init("__sleep", sizeof ("__sleep") - 1, 1);
@@ -154,7 +154,7 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar 
     str->buffer = ecalloc(1, total);
     if (!str->buffer)
     {
-        php_swoole_sys_error(E_ERROR, "malloc failed");
+        php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc failed");
     }
 
     SBucketType real_type = {0};
@@ -175,7 +175,7 @@ static CPINLINE void swoole_check_size(seriaString *str, size_t len)
         str->buffer = erealloc2(str->buffer, new_size, str->offset);
         if (!str->buffer)
         {
-            php_swoole_sys_error(E_ERROR, "erealloc2 failed");
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "erealloc2 failed");
         }
         str->total = new_size;
     }
@@ -1183,11 +1183,11 @@ static CPINLINE void swoole_serialize_raw(seriaString *buffer, zval *zvalue)
 static void swoole_serialize_object(seriaString *buffer, zval *obj, size_t start)
 {
     zend_string *name = Z_OBJCE_P(obj)->name;
-//    if (GC_IS_RECURSIVE(Z_OBJPROP_P(obj)))
-//    {
-//        zend_throw_exception_ex(NULL, 0, "the object %s has cycle ref", name->val);
-//        return;
-//    }
+    //    if (GC_IS_RECURSIVE(Z_OBJPROP_P(obj)))
+    //    {
+    //        zend_throw_exception_ex(NULL, 0, "the object %s has cycle ref", name->val);
+    //        return;
+    //    }
     if (name->len > 0xffff)
     {
         zend_throw_exception_ex(NULL, 0, "the object name is too long");
@@ -1425,7 +1425,7 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zend_uc
         {
             zend_hash_next_index_insert(Z_OBJPROP_P(return_value), data);
         }
-        (void)index;
+        (void) index;
     }
     ZEND_HASH_FOREACH_END();
     zval_dtor(&property);
@@ -1631,7 +1631,7 @@ static PHP_METHOD(swoole_serialize, pack)
     zval *zvalue;
     size_t is_fast = 0;
 
-//    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
+    //    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "z|l", &zvalue, &is_fast) == FAILURE)
     {
@@ -1650,7 +1650,7 @@ static PHP_METHOD(swoole_serialize, unpack)
     zend_long flag = 0;
     zval *args = NULL; //for object
 
-//    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
+    //    php_swoole_fatal_error(E_DEPRECATED, "swoole serialize will be removed, you should be using the php serialize instead");
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "s|la", &buffer, &buffer_len, &flag, &args) == FAILURE)
     {
