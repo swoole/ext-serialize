@@ -19,6 +19,7 @@
 #include "swoole_serialize.h"
 #ifdef __SSE2__
 #include <emmintrin.h>
+#include <php/Zend/zend_types.h>
 #endif
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_serialize_pack, 0, 0, 1)
@@ -50,7 +51,7 @@ static const zend_module_dep swoole_serialize_deps[] = {
 };
 /* }}} */
 
-zend_module_entry swoole_serialize_module_entry ={
+zend_module_entry swoole_serialize_module_entry = {
     STANDARD_MODULE_HEADER_EX, NULL,
     swoole_serialize_deps,
     "swoole_serialize",
@@ -727,34 +728,24 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue, uint32_t nNumOfE
         php_error_docref(NULL, E_NOTICE, "illegal unserialize data");
         return NULL;
     }
-    ZVAL_NEW_ARR(zvalue);
-    //Initialize buckets
-    zend_array *ht = Z_ARR_P(zvalue);
-    ht->nTableSize = size;
+
+    array_init_size(zvalue, nNumOfElements);
+    zend_array* ht = Z_ARRVAL_P(zvalue);
     ht->nNumUsed = nNumOfElements;
     ht->nNumOfElements = nNumOfElements;
-    ht->nNextFreeElement = 0;
-#ifdef HASH_FLAG_APPLY_PROTECTION
-    ht->u.flags = HASH_FLAG_APPLY_PROTECTION;
-#endif
-    ht->nTableMask = -(ht->nTableSize);
-    ht->pDestructor = ZVAL_PTR_DTOR;
 
-    GC_SET_REFCOUNT(ht, 1);
-    GC_TYPE_INFO(ht) = IS_ARRAY;
-    // if (ht->nNumUsed)
-    //{
-    //    void *arData = ecalloc(1, len);
-    HT_SET_DATA_ADDR(ht, emalloc(HT_SIZE(ht)));
-    ht->u.flags |= HASH_FLAG_INITIALIZED;
-    int ht_hash_size = HT_HASH_SIZE((ht)->nTableMask);
-    if (ht_hash_size <= 0)
+    SBucketType type = *((SBucketType*) buffer);
+    if (type.data_len == 0 && type.key_type == KEY_TYPE_INDEX)
     {
-        php_error_docref(NULL, E_NOTICE, "illegal unserialize data");
-        return NULL;
+        ht->u.flags |= HASH_FLAG_PACKED;
+        zend_hash_real_init(ht, 1);
+        //        zend_hash_real_init_packed(ht);
     }
-    SW_HT_HASH_RESET(ht);
-    //}
+    else
+    {
+        zend_hash_real_init(ht, 0);
+        //        zend_hash_real_init_mixed(ht);
+    }
 
 
     int idx;
@@ -813,7 +804,6 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue, uint32_t nNumOfE
                 h = p->h = idx;
                 p->key = NULL;
                 max_index = p->h + 1;
-                //                ht->u.flags |= HASH_FLAG_PACKED;
             }
             else
             {
