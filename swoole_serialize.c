@@ -19,7 +19,7 @@
 #include "swoole_serialize.h"
 #ifdef __SSE2__
 #include <emmintrin.h>
-#include <php/Zend/zend_types.h>
+#include "zend_types.h"
 #endif
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_serialize_pack, 0, 0, 1)
