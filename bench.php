@@ -456,7 +456,7 @@ $target = array (
 $json = json_encode($target);
 $seri = serialize($target);
 $msg = msgpack_pack($target);
-$sw = swoole_serialize($target);
+$sw = swoole_serialize::pack($target);
 
 
 var_dump("json :". strlen($json));
@@ -528,14 +528,14 @@ var_dump("msgpack_unpack :". ($etime - $stime));
 
 $stime = microtime(true);
 for ($i = 0; $i < 50000; $i ++) {
-    swoole_serialize($target);
+    swoole_serialize::pack($target);
 }
 $etime = microtime(true);
 var_dump("swoole_serialize :". ($etime - $stime));
 
 $stime = microtime(true);
 for ($i = 0; $i < 50000; $i ++) {
- swoole_unserialize($sw);
+ swoole_serialize::unpack($sw);
 
 }
 $etime = microtime(true);
