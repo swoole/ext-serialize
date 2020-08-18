@@ -744,6 +744,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue, uint32_t nNumOfE
     else
     {
         zend_hash_real_init(ht, 0);
+        HT_FLAGS(ht) &= ~HASH_FLAG_STATIC_KEYS;//fix key mem leak
         //        zend_hash_real_init_mixed(ht);
     }
 

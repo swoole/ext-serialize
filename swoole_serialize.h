@@ -142,7 +142,9 @@ enum swBool_type
 #define ZEND_HASH_APPLY_PROTECTION(p) 1
 #endif/*}}}*/
 
-
+#ifndef HT_FLAGS
+#define HT_FLAGS(ht) (ht)->u.flags
+#endif
 
 #ifdef	__cplusplus
 }
