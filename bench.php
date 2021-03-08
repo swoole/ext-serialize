@@ -454,9 +454,22 @@ $target = array (
 ); 
 
 
-$json = json_encode($target);
-$seri = serialize($target);
-$msg = msgpack_pack($target);
+//$json = json_encode($target);
+//$seri = serialize($target);
+
+        $i = 2000;
+        while (--$i) {
+            $mobile = random_int(13011413647, 19999413647);
+            $data[0]['key' . $i] = ['666666', (int)'24', (int)'100', (int)$mobile];
+        }
+$sw = swoole_serialize::pack($data);
+$json = json_encode($data);
+$seri = serialize($data);
+var_dump(strlen($sw), strlen($json), strlen($seri));die;     
+        
+        
+
+//$msg = msgpack_pack($target);
 $sw = swoole_serialize::pack($target);
 
 
@@ -507,7 +520,7 @@ var_dump("unserialize :". ($etime - $stime));
 //----------------------------------    
 $stime = microtime(true);
 for ($i = 0; $i < 50000; $i ++) {
-    msgpack_pack($target);
+    //msgpack_pack($target);
 }
 $etime = microtime(true);
 var_dump("msgpack_pack :". ($etime - $stime));
@@ -515,7 +528,7 @@ var_dump("msgpack_pack :". ($etime - $stime));
 //----------------------------------    
 $stime = microtime(true);
 for ($i = 0; $i < 50000; $i ++) {
-    msgpack_unpack($msg);
+    //msgpack_unpack($msg);
 }
 $etime = microtime(true);
 

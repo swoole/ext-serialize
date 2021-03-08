@@ -36,7 +36,7 @@
 extern zend_module_entry swoole_serialize_module_entry;
 #define phpext_swoole_serialize_ptr &swoole_serialize_module_entry
 
-#define PHP_SWOOLE_SERIALIZE_VERSION "1.0"
+#define PHP_SWOOLE_SERIALIZE_VERSION "1.1"
 
 #ifdef PHP_WIN32
 #define PHP_SWOOLE_SERIALIZE_API __declspec(dllexport)
