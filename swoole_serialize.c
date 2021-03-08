@@ -173,6 +173,7 @@ static CPINLINE void swoole_check_size(seriaString *str, size_t len)
     {//extend it
 
         new_size = ZEND_MM_ALIGNED_SIZE(new_size + SERIA_SIZE);
+        //realloc2可以少copy点
         str->buffer = erealloc2(str->buffer, new_size, str->offset);
         if (!str->buffer)
         {
@@ -735,8 +736,9 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue, uint32_t nNumOfE
     ht->nNumOfElements = nNumOfElements;
 
     SBucketType type = *((SBucketType*) buffer);
-    if (type.data_len == 0 && type.key_type == KEY_TYPE_INDEX)
+    if (type.key_len == 0 && type.key_type == KEY_TYPE_INDEX)
     {
+        //pack array
         ht->u.flags |= HASH_FLAG_PACKED;
         zend_hash_real_init(ht, 1);
         //        zend_hash_real_init_packed(ht);
@@ -924,6 +926,7 @@ static void swoole_serialize_arr(seriaString *buffer, zend_array *zvalue)
         {
             type.key_type = KEY_TYPE_INDEX;
             type.key_len = 0;
+            //means pack
             SERIA_SET_ENTRY_TYPE(buffer, type);
         }
         else

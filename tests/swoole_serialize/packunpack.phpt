@@ -39,6 +39,21 @@ $data = swoole_serialize::pack($large_arr_data);
 $un_data = swoole_serialize::unpack($data);
 var_dump($large_arr_data== $un_data);
 
+
+// pack array
+$aaaa = [11,3,12,2,3,5,6];
+$a = swoole_serialize::pack($aaaa);
+$c = swoole_serialize::unpack($a);
+var_dump(3== $c[1]);
+
+
+//bad pack array
+$aaaa =  [1=>11,2=>3];
+$a = swoole_serialize::pack($aaaa);
+$c = swoole_serialize::unpack($a);
+var_dump(3== $c[2]);
+
+
 // error array data
 $data_out = substr($data, 0, 8192);
 $err_data = @swoole_serialize::unpack($data_out);
@@ -46,6 +61,8 @@ var_dump($err_data);
 ?>
 DONE
 --EXPECTF--
+bool(true)
+bool(true)
 bool(true)
 bool(true)
 bool(true)
