@@ -36,7 +36,7 @@
 extern zend_module_entry swoole_serialize_module_entry;
 #define phpext_swoole_serialize_ptr &swoole_serialize_module_entry
 
-#define PHP_SWOOLE_SERIALIZE_VERSION "1.1"
+#define PHP_SWOOLE_SERIALIZE_VERSION "1.2"
 
 #ifdef PHP_WIN32
 #define PHP_SWOOLE_SERIALIZE_API __declspec(dllexport)
@@ -50,8 +50,8 @@ extern zend_module_entry swoole_serialize_module_entry;
 #include "TSRM.h"
 #endif
 
-#if PHP_VERSION_ID > 70400
-#error "require PHP version 7.0 - 7.3"
+#if PHP_VERSION_ID < 70000
+#error "require PHP version 7+"
 #endif
 
 //---------------------------------------------------------

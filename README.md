@@ -1,9 +1,5 @@
 ## swoole_serialize
 
-## tips
-
-the PHP kernel changes frequently which lead that the serialize module is too expensive to maintain, so temporarily give up support for more than PHP7.3.
-
 ## require
 
 - PHP 7+
@@ -20,7 +16,7 @@ echo "extension=/path/to/swoole_serialize.so" >> php.ini
 
 ## features
 
-- the fastest serialize function for php7 (see bench.php,or you can bench it use you data,trust me it is cool!).
+- the fastest serialize function for php7+ (see bench.php,or you can bench it use you data,trust me it is cool!).
 - support pack and fastPack two function.
 - support __sleep __wakeup __autoload etc.
 

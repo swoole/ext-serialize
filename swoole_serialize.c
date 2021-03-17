@@ -91,7 +91,7 @@ PHP_MINFO_FUNCTION(swoole_serialize)
     php_info_print_table_header(2, "swoole_serialize support", "enabled");
     php_info_print_table_row(2, "swoole_serialize version", PHP_SWOOLE_SERIALIZE_VERSION);
     php_info_print_table_row(2, "Author", "xinhua.guo");
-    php_info_print_table_row(2, "email", "woshiguo35@sina.com");
+    php_info_print_table_row(2, "email", "guoxinhua@swoole.com");
     php_info_print_table_end();
 
     /* Remove comments if you have entries in php.ini
@@ -120,7 +120,7 @@ void *unseri_buffer_end = NULL;
 void swoole_serialize_init(int module_number)
 {
     INIT_CLASS_ENTRY(swoole_serialize_ce, "Swoole\\Serialize", swoole_serialize_methods);
-    swoole_serialize_ce_ptr = zend_register_internal_class(&swoole_serialize_ce TSRMLS_CC);
+    swoole_serialize_ce_ptr = zend_register_internal_class(&swoole_serialize_ce);
     zend_register_class_alias("swoole_serialize", swoole_serialize_ce_ptr);
 
     //disable serilize/unserialize
@@ -155,7 +155,7 @@ static CPINLINE int swoole_string_new(size_t size, seriaString *str, zend_uchar 
     str->buffer = ecalloc(1, total);
     if (!str->buffer)
     {
-        php_error_docref(NULL TSRMLS_CC, E_ERROR, "malloc failed");
+        php_error_docref(NULL, E_ERROR, "malloc failed");
     }
 
     SBucketType real_type = {0};
@@ -177,7 +177,7 @@ static CPINLINE void swoole_check_size(seriaString *str, size_t len)
         str->buffer = erealloc2(str->buffer, new_size, str->offset);
         if (!str->buffer)
         {
-            php_error_docref(NULL TSRMLS_CC, E_ERROR, "erealloc2 failed");
+            php_error_docref(NULL, E_ERROR, "erealloc2 failed");
         }
         str->total = new_size;
     }
@@ -746,7 +746,7 @@ static void* swoole_unserialize_arr(void *buffer, zval *zvalue, uint32_t nNumOfE
     else
     {
         zend_hash_real_init(ht, 0);
-        HT_FLAGS(ht) &= ~HASH_FLAG_STATIC_KEYS;//fix key mem leak
+        HT_FLAGS(ht) &= ~HASH_FLAG_STATIC_KEYS; //fix key mem leak
         //        zend_hash_real_init_mixed(ht);
     }
 
@@ -1197,7 +1197,11 @@ static void swoole_serialize_object(seriaString *buffer, zval *obj, size_t start
     if (ce && zend_hash_exists(&ce->function_table, Z_STR(swSeriaG.sleep_fname)))
     {
         zval retval;
+#if PHP_VERSION_ID >= 80000
+        if (call_user_function(NULL, obj, &swSeriaG.sleep_fname, &retval, 0, 0) == SUCCESS)
+#else
         if (call_user_function_ex(NULL, obj, &swSeriaG.sleep_fname, &retval, 0, 0, 1, NULL) == SUCCESS)
+#endif
         {
             if (UNEXPECTED(EG(exception)))
             {
@@ -1220,7 +1224,7 @@ static void swoole_serialize_object(seriaString *buffer, zval *obj, size_t start
                 ALLOCA_FLAG(use_heap);
                 void *ht_addr = do_alloca(HT_SIZE(ht), use_heap);
                 HT_SET_DATA_ADDR(ht, ht_addr);
-                ht->u.flags |= HASH_FLAG_INITIALIZED;
+                //                ht->u.flags |= HASH_FLAG_INITIALIZED;
                 SW_HT_HASH_RESET(ht);
 
                 //just clean property do not add null when does not exist
@@ -1329,9 +1333,13 @@ static CPINLINE zend_class_entry* swoole_try_get_ce(zend_string *class_name)
     Z_STR(user_func) = fname;
     Z_TYPE_INFO(user_func) = IS_STRING_EX;
     ZVAL_STR(&args[0], class_name);
-
-    call_user_function_ex(CG(function_table), NULL, &user_func, &retval, 1, args, 0, NULL);
-
+    
+#if PHP_VERSION_ID >= 80000
+    call_user_function(CG(function_table), NULL, &user_func, &retval, 1, args);
+#else
+    call_user_function_ex(CG(function_table), NULL, &user_func, &retval, 1, args, 0, NULL);   
+#endif
+    
     swoole_string_release(fname);
 
     //user class , do not support incomplete class now
@@ -1410,7 +1418,11 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zend_uc
             else
             {
                 zend_unmangle_property_name_ex(key, &tmp, &prop_name, &prop_len);
+#if PHP_VERSION_ID >= 80000
+                zend_update_property(ce, Z_OBJ_P(return_value), prop_name, prop_len, data);
+#else
                 zend_update_property(ce, return_value, prop_name, prop_len, data);
+#endif
             }
             //            zend_hash_update(Z_OBJPROP_P(return_value),key,data);
             //            zend_update_property(ce, return_value, ZSTR_VAL(key), ZSTR_LEN(key), data);
@@ -1460,7 +1472,11 @@ static void* swoole_unserialize_object(void *buffer, zval *return_value, zend_uc
         zend_string *fname = swoole_string_init(ZEND_STRL("__wakeup"));
         Z_STR(wakeup) = fname;
         Z_TYPE_INFO(wakeup) = IS_STRING_EX;
+#if PHP_VERSION_ID >= 80000
+        call_user_function(CG(function_table), return_value, &wakeup, &ret, 0, NULL);
+#else
         call_user_function_ex(CG(function_table), return_value, &wakeup, &ret, 0, NULL, 1, NULL);
+#endif
         swoole_string_release(fname);
         zval_ptr_dtor(&ret);
     }
