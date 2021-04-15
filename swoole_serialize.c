@@ -1059,26 +1059,33 @@ try_again:
             case IS_ARRAY:
             {
                 zend_array *ht = Z_ARRVAL_P(data);
-
-                if (GC_IS_RECURSIVE(ht))
+                if ((GC_FLAGS(ht) & GC_IMMUTABLE))
                 {
-                    ((SBucketType*) (buffer->buffer + p))->data_type = IS_NULL; //reset type null
-                    php_error_docref(NULL, E_NOTICE, "the array has cycle ref");
+                    seria_array_type(ht, buffer, p, buffer->offset);
+                    swoole_serialize_arr(buffer, ht);
                 }
                 else
                 {
-                    seria_array_type(ht, buffer, p, buffer->offset);
-                    if (ZEND_HASH_APPLY_PROTECTION(ht))
+                    if (GC_IS_RECURSIVE(ht))
                     {
-                        GC_PROTECT_RECURSION(ht);
-                        swoole_serialize_arr(buffer, ht);
-                        GC_UNPROTECT_RECURSION(ht);
+                        ((SBucketType*) (buffer->buffer + p))->data_type = IS_NULL; //reset type null
+                        php_error_docref(NULL, E_NOTICE, "the array has cycle ref");
                     }
                     else
                     {
-                        swoole_serialize_arr(buffer, ht);
-                    }
+                        seria_array_type(ht, buffer, p, buffer->offset);
+                        if (ZEND_HASH_APPLY_PROTECTION(ht))
+                        {
+                            GC_PROTECT_RECURSION(ht);
+                            swoole_serialize_arr(buffer, ht);
+                            GC_UNPROTECT_RECURSION(ht);
+                        }
+                        else
+                        {
+                            swoole_serialize_arr(buffer, ht);
+                        }
 
+                    }
                 }
                 break;
             }
@@ -1333,13 +1340,13 @@ static CPINLINE zend_class_entry* swoole_try_get_ce(zend_string *class_name)
     Z_STR(user_func) = fname;
     Z_TYPE_INFO(user_func) = IS_STRING_EX;
     ZVAL_STR(&args[0], class_name);
-    
+
 #if PHP_VERSION_ID >= 80000
     call_user_function(CG(function_table), NULL, &user_func, &retval, 1, args);
 #else
-    call_user_function_ex(CG(function_table), NULL, &user_func, &retval, 1, args, 0, NULL);   
+    call_user_function_ex(CG(function_table), NULL, &user_func, &retval, 1, args, 0, NULL);
 #endif
-    
+
     swoole_string_release(fname);
 
     //user class , do not support incomplete class now
