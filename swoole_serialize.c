@@ -1059,7 +1059,7 @@ try_again:
             case IS_ARRAY:
             {
                 zend_array *ht = Z_ARRVAL_P(data);
-                if ((GC_FLAGS(ht) & GC_IMMUTABLE))
+                if ((GC_FLAGS(ht) & IS_ARRAY_IMMUTABLE))
                 {
                     seria_array_type(ht, buffer, p, buffer->offset);
                     swoole_serialize_arr(buffer, ht);
