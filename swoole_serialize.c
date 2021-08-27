@@ -21,6 +21,8 @@
 #include <emmintrin.h>
 #include "zend_types.h"
 #endif
+#include <ext/standard/info.h>
+#include "zend_exceptions.h"
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_swoole_serialize_pack, 0, 0, 1)
 ZEND_ARG_INFO(0, data)
